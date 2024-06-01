@@ -8,6 +8,8 @@ use vulkano::{
 };
 use winit::window::Window;
 
+// TODO: clear unwraps
+
 pub fn create_swapchain_and_images(
     device: Arc<Device>,
     surface: Arc<Surface>,

@@ -4,7 +4,7 @@ use vulkano::instance::{Instance, InstanceCreateInfo, InstanceCreationError};
 use vulkano::{Version, VulkanLibrary};
 
 pub fn instance_for_window_requirements() -> Result<Arc<Instance>, InstanceCreationError> {
-    let library = VulkanLibrary::new().unwrap();
+    let library = VulkanLibrary::new().expect("Failed to load vulkan library");
     let extensions = vulkano_win::required_extensions(&library);
 
     Instance::new(
