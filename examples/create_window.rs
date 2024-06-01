@@ -2,138 +2,31 @@ use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
 use vulkano::command_buffer::{
     AutoCommandBufferBuilder, CommandBufferUsage, RenderPassBeginInfo, SubpassContents,
 };
-use vulkano::device::physical::PhysicalDeviceType;
-use vulkano::device::{Device, DeviceCreateInfo, DeviceExtensions, QueueCreateInfo};
-use vulkano::image::view::ImageView;
-use vulkano::image::{ImageAccess, SwapchainImage};
-use vulkano::instance::{Instance, InstanceCreateInfo};
-use vulkano::pipeline::graphics::viewport::Viewport;
-use vulkano::render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass};
-use vulkano::swapchain::{
-    self, AcquireError, Swapchain, SwapchainCreateInfo, SwapchainCreationError,
-    SwapchainPresentInfo,
-};
+use vulkano::swapchain::{self, AcquireError, SwapchainPresentInfo};
 use vulkano::sync::{self, FlushError, GpuFuture};
-use vulkano::{Version, VulkanLibrary};
-
-use vulkano_win::VkSurfaceBuild;
 
 use winit::event::{Event, WindowEvent};
-use winit::event_loop::{ControlFlow, EventLoop};
-use winit::window::{Window, WindowBuilder};
-
-use std::sync::Arc;
+use winit::event_loop::ControlFlow;
 
 fn main() {
-    // vulkan lib instance
-    let instance = {
-        let library = VulkanLibrary::new().unwrap();
-        let extensions = vulkano_win::required_extensions(&library);
+    let instance = learn_vulkano::instance::instance_for_window_requirements().unwrap();
 
-        Instance::new(
-            library,
-            InstanceCreateInfo {
-                enabled_extensions: extensions,
-                enumerate_portability: true, // required for MoltenVK on macOS
-                max_api_version: Some(Version::V1_1),
-                ..Default::default()
-            },
-        )
-        .unwrap()
-    };
+    let (event_loop, surface) =
+        learn_vulkano::window::window_eventloop_surface(instance.clone()).unwrap();
 
-    // window + eventloop + surface
-    let event_loop = EventLoop::new();
-    let surface = WindowBuilder::new()
-        .build_vk_surface(&event_loop, instance.clone())
-        .unwrap();
-
-    // physical device and queue family
-    let device_extensions = DeviceExtensions {
-        khr_swapchain: true,
-        ..DeviceExtensions::empty()
-    };
-    let (physical_device, queue_family_index) = instance
-        .enumerate_physical_devices()
-        .unwrap()
-        .filter(|p| p.supported_extensions().contains(&device_extensions))
-        .filter_map(|p| {
-            p.queue_family_properties()
-                .iter()
-                .enumerate()
-                .position(|(i, q)| {
-                    // pick first queue_familiy_index that handles graphics and can draw on the surface created by winit
-                    q.queue_flags.graphics && p.surface_support(i as u32, &surface).unwrap_or(false)
-                })
-                .map(|i| (p, i as u32))
-        })
-        .min_by_key(|(p, _)| {
-            // lower score for preferred device types
-            match p.properties().device_type {
-                PhysicalDeviceType::DiscreteGpu => 0,
-                PhysicalDeviceType::IntegratedGpu => 1,
-                PhysicalDeviceType::VirtualGpu => 2,
-                PhysicalDeviceType::Cpu => 3,
-                PhysicalDeviceType::Other => 4,
-                _ => 5,
-            }
-        })
-        .expect("No suitable physical device found");
-
-    // logical device and queue, submit commands on queue
-    let (device, mut queues) = Device::new(
-        physical_device,
-        DeviceCreateInfo {
-            enabled_extensions: device_extensions,
-            queue_create_infos: vec![QueueCreateInfo {
-                queue_family_index,
-                ..Default::default()
-            }],
-            ..Default::default()
-        },
+    let daq = learn_vulkano::device::device_and_queue_for_window_requirements(
+        instance.clone(),
+        surface.clone(),
     )
     .unwrap();
-    let queue = queues.next().unwrap();
+    let (device, queue) = (daq.logical, daq.queues[0].clone());
 
-    // swapchain and images, image can be attached to framebuffer later
-    let (mut swapchain, images) = {
-        let caps = device
-            .physical_device()
-            .surface_capabilities(&surface, Default::default())
-            .unwrap();
-
-        let usage = caps.supported_usage_flags;
-        let alpha = caps.supported_composite_alpha.iter().next().unwrap();
-
-        let image_format = Some(
-            device
-                .physical_device()
-                .surface_formats(&surface, Default::default())
-                .unwrap()[0]
-                .0,
-        );
-
-        let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
-        let image_extent: [u32; 2] = window.inner_size().into();
-
-        Swapchain::new(
-            device.clone(),
-            surface.clone(),
-            SwapchainCreateInfo {
-                min_image_count: caps.min_image_count,
-                image_format,
-                image_extent,
-                image_usage: usage,
-                composite_alpha: alpha,
-                ..Default::default()
-            },
-        )
-        .unwrap()
-    };
-
-    // command buffer
-    let command_buffer_allocator =
-        StandardCommandBufferAllocator::new(device.clone(), Default::default());
+    let (mut swapchain, images) = learn_vulkano::swapchain::create_swapchain_and_images(
+        device.clone(),
+        surface.clone(),
+        None,
+    )
+    .unwrap();
 
     // render pass descript shape of used data used in this pass
     let render_pass = vulkano::single_pass_renderpass!(
@@ -153,13 +46,12 @@ fn main() {
     )
     .unwrap();
 
-    let mut viewport = Viewport {
-        origin: [0.0, 0.0],
-        dimensions: [0.0, 0.0],
-        depth_range: 0.0..1.0,
-    };
+    let mut framebuffers =
+        learn_vulkano::swapchain::create_framebuffer(&images, render_pass.clone()).unwrap();
 
-    let mut framebuffers = window_size_dependent_setup(&images, render_pass.clone(), &mut viewport);
+    // command buffer
+    let command_buffer_allocator =
+        StandardCommandBufferAllocator::new(device.clone(), Default::default());
 
     let mut recreate_swapchain = false;
     let mut previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>);
@@ -185,21 +77,17 @@ fn main() {
                 .cleanup_finished();
 
             if recreate_swapchain {
-                let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
-                let image_extent: [u32; 2] = window.inner_size().into();
-
-                let (new_swapchain, new_images) = match swapchain.recreate(SwapchainCreateInfo {
-                    image_extent,
-                    ..swapchain.create_info()
-                }) {
-                    Ok(r) => r,
-                    Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
-                    Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
-                };
-
+                let (new_swapchain, new_images) =
+                    learn_vulkano::swapchain::create_swapchain_and_images(
+                        device.clone(),
+                        surface.clone(),
+                        Some(swapchain.clone()),
+                    )
+                    .unwrap();
                 swapchain = new_swapchain;
                 framebuffers =
-                    window_size_dependent_setup(&new_images, render_pass.clone(), &mut viewport);
+                    learn_vulkano::swapchain::create_framebuffer(&new_images, render_pass.clone())
+                        .unwrap();
                 recreate_swapchain = false;
             }
 
@@ -270,28 +158,4 @@ fn main() {
         }
         _ => {}
     });
-}
-
-fn window_size_dependent_setup(
-    images: &[Arc<SwapchainImage>],
-    render_pass: Arc<RenderPass>,
-    viewport: &mut Viewport,
-) -> Vec<Arc<Framebuffer>> {
-    let dimensions = images[0].dimensions().width_height();
-    viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
-
-    images
-        .iter()
-        .map(|image| {
-            let view = ImageView::new_default(image.clone()).unwrap();
-            Framebuffer::new(
-                render_pass.clone(),
-                FramebufferCreateInfo {
-                    attachments: vec![view],
-                    ..Default::default()
-                },
-            )
-            .unwrap()
-        })
-        .collect::<Vec<_>>()
 }
