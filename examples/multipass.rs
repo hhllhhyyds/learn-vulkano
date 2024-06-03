@@ -28,26 +28,10 @@ use winit::event_loop::ControlFlow;
 use learn_vulkano::vertex::VertexB;
 
 mod deferred_vert {
-    use learn_vulkano::mvp::MVP;
-
     vulkano_shaders::shader! {
         ty: "vertex",
         path: "examples/multipass/shaders/deferred.vert",
-        types_meta: {
-            use bytemuck::{Pod, Zeroable};
-
-            #[derive(Clone, Copy, Zeroable, Pod)]
-        },
-    }
-
-    impl From<MVP> for ty::MvpData {
-        fn from(mvp: MVP) -> Self {
-            ty::MvpData {
-                model: mvp.model.to_cols_array_2d(),
-                view: mvp.view.to_cols_array_2d(),
-                projection: mvp.projection.to_cols_array_2d(),
-            }
-        }
+        types_meta: { #[derive(Clone, Copy, bytemuck::Zeroable, bytemuck::Pod)] },
     }
 }
 
@@ -62,11 +46,7 @@ mod lighting_vert {
     vulkano_shaders::shader! {
         ty: "vertex",
         path: "examples/multipass/shaders/lighting.vert",
-        types_meta: {
-            use bytemuck::{Pod, Zeroable};
-
-            #[derive(Clone, Copy, Zeroable, Pod)]
-        },
+        types_meta: { #[derive(Clone, Copy, bytemuck::Zeroable, bytemuck::Pod)] },
     }
 }
 
@@ -74,204 +54,8 @@ mod lighting_frag {
     vulkano_shaders::shader! {
         ty: "fragment",
         path: "examples/multipass/shaders/lighting.frag",
-        types_meta: {
-            use bytemuck::{Pod, Zeroable};
-
-            #[derive(Clone, Copy, Zeroable, Pod)]
-        },
+        types_meta: { #[derive(Clone, Copy, bytemuck::Zeroable, bytemuck::Pod)] },
     }
-}
-
-mod model {
-    use super::VertexB;
-    pub const CUBE: [VertexB; 36] = [
-        // front face
-        VertexB {
-            position: [-1.000000, -1.000000, 1.000000],
-            normal: [0.0000, 0.0000, 1.0000],
-            color: [1.0, 0.35, 0.137],
-        },
-        VertexB {
-            position: [-1.000000, 1.000000, 1.000000],
-            normal: [0.0000, 0.0000, 1.0000],
-            color: [1.0, 0.35, 0.137],
-        },
-        VertexB {
-            position: [1.000000, 1.000000, 1.000000],
-            normal: [0.0000, 0.0000, 1.0000],
-            color: [1.0, 0.35, 0.137],
-        },
-        VertexB {
-            position: [-1.000000, -1.000000, 1.000000],
-            normal: [0.0000, 0.0000, 1.0000],
-            color: [1.0, 0.35, 0.137],
-        },
-        VertexB {
-            position: [1.000000, 1.000000, 1.000000],
-            normal: [0.0000, 0.0000, 1.0000],
-            color: [1.0, 0.35, 0.137],
-        },
-        VertexB {
-            position: [1.000000, -1.000000, 1.000000],
-            normal: [0.0000, 0.0000, 1.0000],
-            color: [1.0, 0.35, 0.137],
-        },
-        // back face
-        VertexB {
-            position: [1.000000, -1.000000, -1.000000],
-            normal: [0.0000, 0.0000, -1.0000],
-            color: [1.0, 0.35, 0.137],
-        },
-        VertexB {
-            position: [1.000000, 1.000000, -1.000000],
-            normal: [0.0000, 0.0000, -1.0000],
-            color: [1.0, 0.35, 0.137],
-        },
-        VertexB {
-            position: [-1.000000, 1.000000, -1.000000],
-            normal: [0.0000, 0.0000, -1.0000],
-            color: [1.0, 0.35, 0.137],
-        },
-        VertexB {
-            position: [1.000000, -1.000000, -1.000000],
-            normal: [0.0000, 0.0000, -1.0000],
-            color: [1.0, 0.35, 0.137],
-        },
-        VertexB {
-            position: [-1.000000, 1.000000, -1.000000],
-            normal: [0.0000, 0.0000, -1.0000],
-            color: [1.0, 0.35, 0.137],
-        },
-        VertexB {
-            position: [-1.000000, -1.000000, -1.000000],
-            normal: [0.0000, 0.0000, -1.0000],
-            color: [1.0, 0.35, 0.137],
-        },
-        // top face
-        VertexB {
-            position: [-1.000000, -1.000000, 1.000000],
-            normal: [0.0000, -1.0000, 0.0000],
-            color: [1.0, 0.35, 0.137],
-        },
-        VertexB {
-            position: [1.000000, -1.000000, 1.000000],
-            normal: [0.0000, -1.0000, 0.0000],
-            color: [1.0, 0.35, 0.137],
-        },
-        VertexB {
-            position: [1.000000, -1.000000, -1.000000],
-            normal: [0.0000, -1.0000, 0.0000],
-            color: [1.0, 0.35, 0.137],
-        },
-        VertexB {
-            position: [-1.000000, -1.000000, 1.000000],
-            normal: [0.0000, -1.0000, 0.0000],
-            color: [1.0, 0.35, 0.137],
-        },
-        VertexB {
-            position: [1.000000, -1.000000, -1.000000],
-            normal: [0.0000, -1.0000, 0.0000],
-            color: [1.0, 0.35, 0.137],
-        },
-        VertexB {
-            position: [-1.000000, -1.000000, -1.000000],
-            normal: [0.0000, -1.0000, 0.0000],
-            color: [1.0, 0.35, 0.137],
-        },
-        // bottom face
-        VertexB {
-            position: [1.000000, 1.000000, 1.000000],
-            normal: [0.0000, 1.0000, 0.0000],
-            color: [1.0, 0.35, 0.137],
-        },
-        VertexB {
-            position: [-1.000000, 1.000000, 1.000000],
-            normal: [0.0000, 1.0000, 0.0000],
-            color: [1.0, 0.35, 0.137],
-        },
-        VertexB {
-            position: [-1.000000, 1.000000, -1.000000],
-            normal: [0.0000, 1.0000, 0.0000],
-            color: [1.0, 0.35, 0.137],
-        },
-        VertexB {
-            position: [1.000000, 1.000000, 1.000000],
-            normal: [0.0000, 1.0000, 0.0000],
-            color: [1.0, 0.35, 0.137],
-        },
-        VertexB {
-            position: [-1.000000, 1.000000, -1.000000],
-            normal: [0.0000, 1.0000, 0.0000],
-            color: [1.0, 0.35, 0.137],
-        },
-        VertexB {
-            position: [1.000000, 1.000000, -1.000000],
-            normal: [0.0000, 1.0000, 0.0000],
-            color: [1.0, 0.35, 0.137],
-        },
-        // left face
-        VertexB {
-            position: [-1.000000, -1.000000, -1.000000],
-            normal: [-1.0000, 0.0000, 0.0000],
-            color: [1.0, 0.35, 0.137],
-        },
-        VertexB {
-            position: [-1.000000, 1.000000, -1.000000],
-            normal: [-1.0000, 0.0000, 0.0000],
-            color: [1.0, 0.35, 0.137],
-        },
-        VertexB {
-            position: [-1.000000, 1.000000, 1.000000],
-            normal: [-1.0000, 0.0000, 0.0000],
-            color: [1.0, 0.35, 0.137],
-        },
-        VertexB {
-            position: [-1.000000, -1.000000, -1.000000],
-            normal: [-1.0000, 0.0000, 0.0000],
-            color: [1.0, 0.35, 0.137],
-        },
-        VertexB {
-            position: [-1.000000, 1.000000, 1.000000],
-            normal: [-1.0000, 0.0000, 0.0000],
-            color: [1.0, 0.35, 0.137],
-        },
-        VertexB {
-            position: [-1.000000, -1.000000, 1.000000],
-            normal: [-1.0000, 0.0000, 0.0000],
-            color: [1.0, 0.35, 0.137],
-        },
-        // right face
-        VertexB {
-            position: [1.000000, -1.000000, 1.000000],
-            normal: [1.0000, 0.0000, 0.0000],
-            color: [1.0, 0.35, 0.137],
-        },
-        VertexB {
-            position: [1.000000, 1.000000, 1.000000],
-            normal: [1.0000, 0.0000, 0.0000],
-            color: [1.0, 0.35, 0.137],
-        },
-        VertexB {
-            position: [1.000000, 1.000000, -1.000000],
-            normal: [1.0000, 0.0000, 0.0000],
-            color: [1.0, 0.35, 0.137],
-        },
-        VertexB {
-            position: [1.000000, -1.000000, 1.000000],
-            normal: [1.0000, 0.0000, 0.0000],
-            color: [1.0, 0.35, 0.137],
-        },
-        VertexB {
-            position: [1.000000, 1.000000, -1.000000],
-            normal: [1.0000, 0.0000, 0.0000],
-            color: [1.0, 0.35, 0.137],
-        },
-        VertexB {
-            position: [1.000000, -1.000000, -1.000000],
-            normal: [1.0000, 0.0000, 0.0000],
-            color: [1.0, 0.35, 0.137],
-        },
-    ];
 }
 
 fn main() {
@@ -368,7 +152,6 @@ fn main() {
 
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
 
-    let vertices = model::CUBE;
     let vertex_buffer = CpuAccessibleBuffer::from_iter(
         &memory_allocator,
         BufferUsage {
@@ -376,7 +159,7 @@ fn main() {
             ..BufferUsage::empty()
         },
         false,
-        vertices,
+        learn_vulkano::vertex::CUBE_B,
     )
     .unwrap();
 
@@ -443,7 +226,13 @@ fn main() {
                     * glam::Mat4::from_rotation_y(elapsed_as_radians as f32 * 30.0)
                     * glam::Mat4::from_rotation_x(elapsed_as_radians as f32 * 20.0);
 
-                uniform_buffer.from_data(mvp.into()).unwrap()
+                uniform_buffer
+                    .from_data(deferred_vert::ty::MvpData {
+                        model: mvp.model.to_cols_array_2d(),
+                        view: mvp.view.to_cols_array_2d(),
+                        projection: mvp.projection.to_cols_array_2d(),
+                    })
+                    .unwrap()
             };
 
             let ambient_buffer: CpuBufferPool<lighting_frag::ty::AmbientLightData> =
