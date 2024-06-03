@@ -74,6 +74,64 @@ pub fn create_framebuffer(
     Ok(framebuffer)
 }
 
+pub fn create_framebuffer_and_other(
+    images: &[Arc<SwapchainImage>],
+    render_pass: Arc<RenderPass>,
+    allocator: &StandardMemoryAllocator,
+) -> (
+    Vec<Arc<Framebuffer>>,
+    Arc<ImageView<AttachmentImage>>,
+    Arc<ImageView<AttachmentImage>>,
+) {
+    let mut framebuffers = vec![];
+    let dimensions = images[0].dimensions().width_height();
+
+    let depth_buffer = ImageView::new_default(
+        AttachmentImage::transient(allocator, dimensions, Format::D16_UNORM).unwrap(),
+    )
+    .unwrap();
+
+    let color_buffer = ImageView::new_default(
+        AttachmentImage::transient_input_attachment(
+            allocator,
+            dimensions,
+            Format::A2B10G10R10_UNORM_PACK32,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+
+    let normal_buffer = ImageView::new_default(
+        AttachmentImage::transient_input_attachment(
+            allocator,
+            dimensions,
+            Format::R16G16B16A16_SFLOAT,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+
+    for image in images {
+        let view = ImageView::new_default(image.clone()).unwrap();
+        framebuffers.push(
+            Framebuffer::new(
+                render_pass.clone(),
+                FramebufferCreateInfo {
+                    attachments: vec![
+                        view,
+                        color_buffer.clone(),
+                        normal_buffer.clone(),
+                        depth_buffer.clone(),
+                    ],
+                    ..Default::default()
+                },
+            )
+            .unwrap(),
+        );
+    }
+    (framebuffers, color_buffer.clone(), normal_buffer.clone())
+}
+
 pub fn create_framebuffer_with_depth(
     images: &[Arc<SwapchainImage>],
     render_pass: Arc<RenderPass>,
