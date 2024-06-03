@@ -2,6 +2,7 @@ use std::f32::consts::{FRAC_PI_2, PI};
 use std::sync::Arc;
 use std::time::Instant;
 
+use glam::Vec3Swizzles;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool, TypedBufferAccess};
 use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
 use vulkano::command_buffer::{
@@ -24,7 +25,7 @@ use vulkano::sync::{self, FlushError, GpuFuture};
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::ControlFlow;
 
-use learn_vulkano::vertex::VertexA;
+use learn_vulkano::vertex::VertexB;
 
 mod vs {
     use learn_vulkano::mvp::MVP;
@@ -35,9 +36,12 @@ mod vs {
         src: "
             #version 450
             layout(location = 0) in vec3 position;
-            layout(location = 1) in vec3 color;
+            layout(location = 1) in vec3 normal;
+            layout(location = 2) in vec3 color;
 
             layout(location = 0) out vec3 out_color;
+            layout(location = 1) out vec3 out_normal;
+            layout(location = 2) out vec3 frag_pos;
 
             layout(set = 0, binding = 0) uniform MvpData {
                 mat4 model;
@@ -49,6 +53,8 @@ mod vs {
                 mat4 worldview = uniforms.view * uniforms.model;
                 gl_Position = uniforms.projection * worldview * vec4(position, 1.0);
                 out_color = color;
+                out_normal = mat3(uniforms.model) * normal;
+                frag_pos = vec3(uniforms.model * vec4(position, 1.0));
             }
         ", types_meta: {
             use bytemuck::{Pod, Zeroable};
@@ -74,14 +80,227 @@ mod fs {
         src: "
             #version 450
             layout(location = 0) in vec3 in_color;
-
+            layout(location = 1) in vec3 in_normal;
+            layout(location = 2) in vec3 frag_pos;
+            
             layout(location = 0) out vec4 f_color;
+            
+            layout(set = 0, binding = 1) uniform AmbientLightData {
+                vec3 color;
+                float intensity;
+            } ambient;
 
+            layout(set = 0, binding = 2) uniform DirectionalLightData {
+                vec4 position;
+                vec3 color;
+            } directional;
+            
             void main() {
-                f_color = vec4(in_color, 1.0);
+                vec3 ambient_color = ambient.intensity * ambient.color;
+                vec3 light_direction = normalize(directional.position.xyz - frag_pos);
+                float directional_intensity = max(dot(in_normal, light_direction), 0.0);
+                vec3 directional_color = directional_intensity * directional.color;
+                vec3 combined_color = (ambient_color + directional_color) * in_color;
+                f_color = vec4(combined_color, 1.0);
             }
-        "
+        ", types_meta: {
+            use bytemuck::{Pod, Zeroable};
+
+            #[derive(Clone, Copy, Zeroable, Pod)]
+        },
     }
+}
+
+mod model {
+    use super::VertexB;
+    pub const CUBE: [VertexB; 36] = [
+        // front face
+        VertexB {
+            position: [-1.000000, -1.000000, 1.000000],
+            normal: [0.0000, 0.0000, 1.0000],
+            color: [1.0, 0.35, 0.137],
+        },
+        VertexB {
+            position: [-1.000000, 1.000000, 1.000000],
+            normal: [0.0000, 0.0000, 1.0000],
+            color: [1.0, 0.35, 0.137],
+        },
+        VertexB {
+            position: [1.000000, 1.000000, 1.000000],
+            normal: [0.0000, 0.0000, 1.0000],
+            color: [1.0, 0.35, 0.137],
+        },
+        VertexB {
+            position: [-1.000000, -1.000000, 1.000000],
+            normal: [0.0000, 0.0000, 1.0000],
+            color: [1.0, 0.35, 0.137],
+        },
+        VertexB {
+            position: [1.000000, 1.000000, 1.000000],
+            normal: [0.0000, 0.0000, 1.0000],
+            color: [1.0, 0.35, 0.137],
+        },
+        VertexB {
+            position: [1.000000, -1.000000, 1.000000],
+            normal: [0.0000, 0.0000, 1.0000],
+            color: [1.0, 0.35, 0.137],
+        },
+        // back face
+        VertexB {
+            position: [1.000000, -1.000000, -1.000000],
+            normal: [0.0000, 0.0000, -1.0000],
+            color: [1.0, 0.35, 0.137],
+        },
+        VertexB {
+            position: [1.000000, 1.000000, -1.000000],
+            normal: [0.0000, 0.0000, -1.0000],
+            color: [1.0, 0.35, 0.137],
+        },
+        VertexB {
+            position: [-1.000000, 1.000000, -1.000000],
+            normal: [0.0000, 0.0000, -1.0000],
+            color: [1.0, 0.35, 0.137],
+        },
+        VertexB {
+            position: [1.000000, -1.000000, -1.000000],
+            normal: [0.0000, 0.0000, -1.0000],
+            color: [1.0, 0.35, 0.137],
+        },
+        VertexB {
+            position: [-1.000000, 1.000000, -1.000000],
+            normal: [0.0000, 0.0000, -1.0000],
+            color: [1.0, 0.35, 0.137],
+        },
+        VertexB {
+            position: [-1.000000, -1.000000, -1.000000],
+            normal: [0.0000, 0.0000, -1.0000],
+            color: [1.0, 0.35, 0.137],
+        },
+        // top face
+        VertexB {
+            position: [-1.000000, -1.000000, 1.000000],
+            normal: [0.0000, -1.0000, 0.0000],
+            color: [1.0, 0.35, 0.137],
+        },
+        VertexB {
+            position: [1.000000, -1.000000, 1.000000],
+            normal: [0.0000, -1.0000, 0.0000],
+            color: [1.0, 0.35, 0.137],
+        },
+        VertexB {
+            position: [1.000000, -1.000000, -1.000000],
+            normal: [0.0000, -1.0000, 0.0000],
+            color: [1.0, 0.35, 0.137],
+        },
+        VertexB {
+            position: [-1.000000, -1.000000, 1.000000],
+            normal: [0.0000, -1.0000, 0.0000],
+            color: [1.0, 0.35, 0.137],
+        },
+        VertexB {
+            position: [1.000000, -1.000000, -1.000000],
+            normal: [0.0000, -1.0000, 0.0000],
+            color: [1.0, 0.35, 0.137],
+        },
+        VertexB {
+            position: [-1.000000, -1.000000, -1.000000],
+            normal: [0.0000, -1.0000, 0.0000],
+            color: [1.0, 0.35, 0.137],
+        },
+        // bottom face
+        VertexB {
+            position: [1.000000, 1.000000, 1.000000],
+            normal: [0.0000, 1.0000, 0.0000],
+            color: [1.0, 0.35, 0.137],
+        },
+        VertexB {
+            position: [-1.000000, 1.000000, 1.000000],
+            normal: [0.0000, 1.0000, 0.0000],
+            color: [1.0, 0.35, 0.137],
+        },
+        VertexB {
+            position: [-1.000000, 1.000000, -1.000000],
+            normal: [0.0000, 1.0000, 0.0000],
+            color: [1.0, 0.35, 0.137],
+        },
+        VertexB {
+            position: [1.000000, 1.000000, 1.000000],
+            normal: [0.0000, 1.0000, 0.0000],
+            color: [1.0, 0.35, 0.137],
+        },
+        VertexB {
+            position: [-1.000000, 1.000000, -1.000000],
+            normal: [0.0000, 1.0000, 0.0000],
+            color: [1.0, 0.35, 0.137],
+        },
+        VertexB {
+            position: [1.000000, 1.000000, -1.000000],
+            normal: [0.0000, 1.0000, 0.0000],
+            color: [1.0, 0.35, 0.137],
+        },
+        // left face
+        VertexB {
+            position: [-1.000000, -1.000000, -1.000000],
+            normal: [-1.0000, 0.0000, 0.0000],
+            color: [1.0, 0.35, 0.137],
+        },
+        VertexB {
+            position: [-1.000000, 1.000000, -1.000000],
+            normal: [-1.0000, 0.0000, 0.0000],
+            color: [1.0, 0.35, 0.137],
+        },
+        VertexB {
+            position: [-1.000000, 1.000000, 1.000000],
+            normal: [-1.0000, 0.0000, 0.0000],
+            color: [1.0, 0.35, 0.137],
+        },
+        VertexB {
+            position: [-1.000000, -1.000000, -1.000000],
+            normal: [-1.0000, 0.0000, 0.0000],
+            color: [1.0, 0.35, 0.137],
+        },
+        VertexB {
+            position: [-1.000000, 1.000000, 1.000000],
+            normal: [-1.0000, 0.0000, 0.0000],
+            color: [1.0, 0.35, 0.137],
+        },
+        VertexB {
+            position: [-1.000000, -1.000000, 1.000000],
+            normal: [-1.0000, 0.0000, 0.0000],
+            color: [1.0, 0.35, 0.137],
+        },
+        // right face
+        VertexB {
+            position: [1.000000, -1.000000, 1.000000],
+            normal: [1.0000, 0.0000, 0.0000],
+            color: [1.0, 0.35, 0.137],
+        },
+        VertexB {
+            position: [1.000000, 1.000000, 1.000000],
+            normal: [1.0000, 0.0000, 0.0000],
+            color: [1.0, 0.35, 0.137],
+        },
+        VertexB {
+            position: [1.000000, 1.000000, -1.000000],
+            normal: [1.0000, 0.0000, 0.0000],
+            color: [1.0, 0.35, 0.137],
+        },
+        VertexB {
+            position: [1.000000, -1.000000, 1.000000],
+            normal: [1.0000, 0.0000, 0.0000],
+            color: [1.0, 0.35, 0.137],
+        },
+        VertexB {
+            position: [1.000000, 1.000000, -1.000000],
+            normal: [1.0000, 0.0000, 0.0000],
+            color: [1.0, 0.35, 0.137],
+        },
+        VertexB {
+            position: [1.000000, -1.000000, -1.000000],
+            normal: [1.0000, 0.0000, 0.0000],
+            color: [1.0, 0.35, 0.137],
+        },
+    ];
 }
 
 fn main() {
@@ -104,7 +323,6 @@ fn main() {
     )
     .unwrap();
 
-    // render pass descript shape of used data used in this pass
     let render_pass = vulkano::single_pass_renderpass!(
         device.clone(),
         attachments: {
@@ -132,7 +350,7 @@ fn main() {
     let fs = fs::load(device.clone()).unwrap();
 
     let pipeline = GraphicsPipeline::start()
-        .vertex_input_state(BuffersDefinition::new().vertex::<VertexA>())
+        .vertex_input_state(BuffersDefinition::new().vertex::<VertexB>())
         .vertex_shader(vs.entry_point("main").unwrap(), ())
         .input_assembly_state(InputAssemblyState::new())
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
@@ -144,35 +362,8 @@ fn main() {
         .unwrap();
 
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
-    let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
 
-    let vertices = [
-        VertexA {
-            position: [-0.5, 0.5, -0.5],
-            color: [0.0, 0.0, 0.0],
-        },
-        VertexA {
-            position: [0.5, 0.5, -0.5],
-            color: [0.0, 0.0, 0.0],
-        },
-        VertexA {
-            position: [0.0, -0.5, -0.5],
-            color: [0.0, 0.0, 0.0],
-        },
-        VertexA {
-            position: [-0.5, -0.5, -0.6],
-            color: [1.0, 1.0, 1.0],
-        },
-        VertexA {
-            position: [0.5, -0.5, -0.6],
-            color: [1.0, 1.0, 1.0],
-        },
-        VertexA {
-            position: [0.0, 0.5, -0.6],
-            color: [1.0, 1.0, 1.0],
-        },
-    ];
-
+    let vertices = model::CUBE;
     let vertex_buffer = CpuAccessibleBuffer::from_iter(
         &memory_allocator,
         BufferUsage {
@@ -184,6 +375,16 @@ fn main() {
     )
     .unwrap();
 
+    let mut mvp = learn_vulkano::mvp::MVP::new();
+    let ambient_light = learn_vulkano::light::AmbientLight {
+        color: [1.0, 1.0, 1.0],
+        intensity: 0.2,
+    };
+    let directional_light = learn_vulkano::light::DirectionalLight {
+        position: [-4.0, -4.0, 0.0],
+        color: [1.0, 1.0, 1.0],
+    };
+
     let mut framebuffers = learn_vulkano::swapchain::create_framebuffer_with_depth(
         &images,
         render_pass.clone(),
@@ -191,9 +392,9 @@ fn main() {
     )
     .unwrap();
 
-    // command buffer
     let command_buffer_allocator =
         StandardCommandBufferAllocator::new(device.clone(), Default::default());
+    let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
 
     let mut recreate_swapchain = false;
     let mut previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>);
@@ -221,13 +422,10 @@ fn main() {
 
             let uniform_buffer: CpuBufferPool<vs::ty::MvpData> =
                 CpuBufferPool::uniform_buffer(memory_allocator.clone());
-
             let uniform_subbuffer = {
-                let mut mvp = learn_vulkano::mvp::MVP::new();
-
                 let elapsed = rotation_start.elapsed().as_secs() as f64
                     + rotation_start.elapsed().subsec_nanos() as f64 / 1_000_000_000.0;
-                let elapsed_as_radians = elapsed * PI as f64 / 180.0 * 30.0;
+                let elapsed_as_radians = elapsed * PI as f64 / 180.0;
 
                 let image_extent: [u32; 2] =
                     learn_vulkano::swapchain::surface_extent(&surface).into();
@@ -235,16 +433,46 @@ fn main() {
                 let aspect_ratio = image_extent[0] as f32 / image_extent[1] as f32;
                 mvp.projection =
                     glam::Mat4::perspective_rh_gl(FRAC_PI_2, aspect_ratio, 0.01, 100.0);
-                mvp.model = glam::Mat4::from_rotation_z(elapsed_as_radians as f32);
+                mvp.model = glam::Mat4::from_translation((0.0, 0.0, -5.0).into())
+                    * glam::Mat4::from_rotation_z(elapsed_as_radians as f32 * 50.0)
+                    * glam::Mat4::from_rotation_y(elapsed_as_radians as f32 * 30.0)
+                    * glam::Mat4::from_rotation_x(elapsed_as_radians as f32 * 20.0);
 
                 uniform_buffer.from_data(mvp.into()).unwrap()
+            };
+
+            let ambient_buffer: CpuBufferPool<fs::ty::AmbientLightData> =
+                CpuBufferPool::uniform_buffer(memory_allocator.clone());
+            let ambient_subbuffer = {
+                let uniform_data = fs::ty::AmbientLightData {
+                    color: ambient_light.color,
+                    intensity: ambient_light.intensity,
+                };
+
+                ambient_buffer.from_data(uniform_data).unwrap()
+            };
+
+            let directional_buffer: CpuBufferPool<fs::ty::DirectionalLightData> =
+                CpuBufferPool::uniform_buffer(memory_allocator.clone());
+            let directional_subbuffer = {
+                let position = glam::Vec3::from_array(directional_light.position);
+                let uniform_data = fs::ty::DirectionalLightData {
+                    position: position.xyzz().into(),
+                    color: directional_light.color,
+                };
+
+                directional_buffer.from_data(uniform_data).unwrap()
             };
 
             let layout = pipeline.layout().set_layouts().first().unwrap();
             let set = PersistentDescriptorSet::new(
                 &descriptor_set_allocator,
                 layout.clone(),
-                [WriteDescriptorSet::buffer(0, uniform_subbuffer)],
+                [
+                    WriteDescriptorSet::buffer(0, uniform_subbuffer),
+                    WriteDescriptorSet::buffer(1, ambient_subbuffer),
+                    WriteDescriptorSet::buffer(2, directional_subbuffer),
+                ],
             )
             .unwrap();
 
@@ -280,7 +508,7 @@ fn main() {
                 recreate_swapchain = true;
             }
 
-            let clear_values = vec![Some([0.0, 0.68, 1.0, 1.0].into()), Some(1.0.into())];
+            let clear_values = vec![Some([0.0, 0.0, 0.0, 1.0].into()), Some(1.0.into())];
 
             let mut cmd_buffer_builder = AutoCommandBufferBuilder::primary(
                 &command_buffer_allocator,
