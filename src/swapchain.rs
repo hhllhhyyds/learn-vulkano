@@ -2,7 +2,9 @@ use std::sync::Arc;
 
 use vulkano::{
     device::Device,
-    image::{view::ImageView, SwapchainImage},
+    format::Format,
+    image::{view::ImageView, AttachmentImage, ImageAccess, SwapchainImage},
+    memory::allocator::StandardMemoryAllocator,
     render_pass::{Framebuffer, FramebufferCreateInfo, FramebufferCreationError, RenderPass},
     swapchain::{Surface, Swapchain, SwapchainCreateInfo, SwapchainCreationError},
 };
@@ -65,6 +67,32 @@ pub fn create_framebuffer(
             render_pass.clone(),
             FramebufferCreateInfo {
                 attachments: vec![view],
+                ..Default::default()
+            },
+        )?);
+    }
+    Ok(framebuffer)
+}
+
+pub fn create_framebuffer_with_depth(
+    images: &[Arc<SwapchainImage>],
+    render_pass: Arc<RenderPass>,
+    allocator: &StandardMemoryAllocator,
+) -> Result<Vec<Arc<Framebuffer>>, FramebufferCreationError> {
+    let mut framebuffer = vec![];
+    let dimensions = images[0].dimensions().width_height();
+
+    let depth_buffer = ImageView::new_default(
+        AttachmentImage::transient(allocator, dimensions, Format::D16_UNORM).unwrap(),
+    )
+    .unwrap();
+
+    for image in images {
+        let view = ImageView::new_default(image.clone()).unwrap();
+        framebuffer.push(Framebuffer::new(
+            render_pass.clone(),
+            FramebufferCreateInfo {
+                attachments: vec![view, depth_buffer.clone()],
                 ..Default::default()
             },
         )?);

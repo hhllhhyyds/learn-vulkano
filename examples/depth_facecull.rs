@@ -9,8 +9,11 @@ use vulkano::command_buffer::{
 };
 use vulkano::descriptor_set::allocator::StandardDescriptorSetAllocator;
 use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
+use vulkano::format::Format;
 use vulkano::memory::allocator::StandardMemoryAllocator;
+use vulkano::pipeline::graphics::depth_stencil::DepthStencilState;
 use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
+use vulkano::pipeline::graphics::rasterization::{CullMode, RasterizationState};
 use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
 use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
 use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
@@ -110,11 +113,17 @@ fn main() {
                 store: Store,
                 format: swapchain.image_format(),
                 samples: 1,
+            },
+            depth: {
+                load: Clear,
+                store: DontCare,
+                format: Format::D16_UNORM,
+                samples: 1,
             }
         },
         pass: {
             color: [color],
-            depth_stencil: {}
+            depth_stencil: {depth}
         }
     )
     .unwrap();
@@ -128,6 +137,8 @@ fn main() {
         .input_assembly_state(InputAssemblyState::new())
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
         .fragment_shader(fs.entry_point("main").unwrap(), ())
+        .depth_stencil_state(DepthStencilState::simple_depth_test())
+        .rasterization_state(RasterizationState::new().cull_mode(CullMode::Back))
         .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
         .build(device.clone())
         .unwrap();
@@ -137,16 +148,28 @@ fn main() {
 
     let vertices = [
         VertexA {
-            position: [-0.5, 0.5, -1.0],
-            color: [1.0, 0.0, 0.0],
+            position: [-0.5, 0.5, -0.5],
+            color: [0.0, 0.0, 0.0],
         },
         VertexA {
-            position: [0.5, 0.5, -1.0],
-            color: [0.0, 1.0, 0.0],
+            position: [0.5, 0.5, -0.5],
+            color: [0.0, 0.0, 0.0],
         },
         VertexA {
-            position: [0.0, -0.5, -1.0],
-            color: [0.0, 0.0, 1.0],
+            position: [0.0, -0.5, -0.5],
+            color: [0.0, 0.0, 0.0],
+        },
+        VertexA {
+            position: [-0.5, -0.5, -0.6],
+            color: [1.0, 1.0, 1.0],
+        },
+        VertexA {
+            position: [0.5, -0.5, -0.6],
+            color: [1.0, 1.0, 1.0],
+        },
+        VertexA {
+            position: [0.0, 0.5, -0.6],
+            color: [1.0, 1.0, 1.0],
         },
     ];
 
@@ -161,8 +184,12 @@ fn main() {
     )
     .unwrap();
 
-    let mut framebuffers =
-        learn_vulkano::swapchain::create_framebuffer(&images, render_pass.clone()).unwrap();
+    let mut framebuffers = learn_vulkano::swapchain::create_framebuffer_with_depth(
+        &images,
+        render_pass.clone(),
+        &memory_allocator,
+    )
+    .unwrap();
 
     // command buffer
     let command_buffer_allocator =
@@ -230,9 +257,12 @@ fn main() {
                     )
                     .unwrap();
                 swapchain = new_swapchain;
-                framebuffers =
-                    learn_vulkano::swapchain::create_framebuffer(&new_images, render_pass.clone())
-                        .unwrap();
+                framebuffers = learn_vulkano::swapchain::create_framebuffer_with_depth(
+                    &new_images,
+                    render_pass.clone(),
+                    &memory_allocator,
+                )
+                .unwrap();
                 recreate_swapchain = false;
             }
 
@@ -250,7 +280,7 @@ fn main() {
                 recreate_swapchain = true;
             }
 
-            let clear_values = vec![Some([0.0, 0.68, 1.0, 1.0].into())];
+            let clear_values = vec![Some([0.0, 0.68, 1.0, 1.0].into()), Some(1.0.into())];
 
             let mut cmd_buffer_builder = AutoCommandBufferBuilder::primary(
                 &command_buffer_allocator,
