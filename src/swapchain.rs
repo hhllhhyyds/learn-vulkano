@@ -6,7 +6,7 @@ use vulkano::{
     render_pass::{Framebuffer, FramebufferCreateInfo, FramebufferCreationError, RenderPass},
     swapchain::{Surface, Swapchain, SwapchainCreateInfo, SwapchainCreationError},
 };
-use winit::window::Window;
+use winit::{dpi::PhysicalSize, window::Window};
 
 // TODO: clear unwraps
 
@@ -15,8 +15,7 @@ pub fn create_swapchain_and_images(
     surface: Arc<Surface>,
     old_swapchain: Option<Arc<Swapchain>>,
 ) -> Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>), SwapchainCreationError> {
-    let window = surface.object().unwrap().downcast_ref::<Window>().unwrap();
-    let image_extent: [u32; 2] = window.inner_size().into();
+    let image_extent: [u32; 2] = surface_extent(&surface).into();
 
     if let Some(old_swapchain) = old_swapchain {
         old_swapchain.recreate(SwapchainCreateInfo {
@@ -71,4 +70,13 @@ pub fn create_framebuffer(
         )?);
     }
     Ok(framebuffer)
+}
+
+pub fn surface_extent(surface: &Surface) -> PhysicalSize<u32> {
+    surface
+        .object()
+        .unwrap()
+        .downcast_ref::<Window>()
+        .unwrap()
+        .inner_size()
 }

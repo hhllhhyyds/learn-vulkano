@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use bytemuck::{Pod, Zeroable};
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
 use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
 use vulkano::command_buffer::{
@@ -19,13 +18,7 @@ use winit::event::{Event, WindowEvent};
 use winit::event_loop::ControlFlow;
 use winit::window::Window;
 
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default, Zeroable, Pod)]
-struct Vertex {
-    position: [f32; 3],
-    color: [f32; 3],
-}
-vulkano::impl_vertex!(Vertex, position, color);
+use learn_vulkano::vertex::VertexA;
 
 mod vs {
     vulkano_shaders::shader! {
@@ -103,7 +96,7 @@ fn main() {
     let fs = fs::load(device.clone()).unwrap();
 
     let pipeline = GraphicsPipeline::start()
-        .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
+        .vertex_input_state(BuffersDefinition::new().vertex::<VertexA>())
         .vertex_shader(vs.entry_point("main").unwrap(), ())
         .input_assembly_state(InputAssemblyState::new())
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
@@ -114,15 +107,15 @@ fn main() {
 
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
     let vertices = [
-        Vertex {
+        VertexA {
             position: [-0.5, 0.5, 0.0],
             color: [1.0, 0.0, 0.0],
         },
-        Vertex {
+        VertexA {
             position: [0.5, 0.5, 0.0],
             color: [0.0, 1.0, 0.0],
         },
-        Vertex {
+        VertexA {
             position: [0.0, -0.5, 0.0],
             color: [0.0, 0.0, 1.0],
         },
