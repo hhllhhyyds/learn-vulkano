@@ -74,6 +74,7 @@ pub fn create_framebuffer(
     Ok(framebuffer)
 }
 
+#[allow(clippy::type_complexity)]
 pub fn create_framebuffer_and_other(
     images: &[Arc<SwapchainImage>],
     render_pass: Arc<RenderPass>,
