@@ -284,25 +284,24 @@ fn main() {
                 let elapsed = rotation_start.elapsed().as_secs() as f64
                     + rotation_start.elapsed().subsec_nanos() as f64 / 1_000_000_000.0;
                 let elapsed_as_radians = elapsed * PI as f64 / 180.0;
-
                 let image_extent: [u32; 2] =
                     learn_vulkano::swapchain::surface_extent(&surface).into();
-
                 let aspect_ratio = image_extent[0] as f32 / image_extent[1] as f32;
                 mvp.projection =
                     glam::Mat4::perspective_rh_gl(FRAC_PI_2, aspect_ratio, 0.01, 100.0);
-                mvp.model = glam::Mat4::from_translation((0.0, 0.0, -5.0).into())
-                    * glam::Mat4::from_rotation_z(elapsed_as_radians as f32 * 50.0)
-                    * glam::Mat4::from_rotation_y(elapsed_as_radians as f32 * 30.0)
-                    * glam::Mat4::from_rotation_x(elapsed_as_radians as f32 * 20.0);
+                model.zero_rotation();
+                model.rotate(PI, glam::vec3(0.0, 1.0, 0.0));
+                model.rotate(elapsed_as_radians as f32 * 10.0, glam::vec3(1.0, 0.0, 0.0));
+                model.rotate(elapsed_as_radians as f32 * 30.0, glam::vec3(0.0, 1.0, 0.0));
+                model.rotate(elapsed_as_radians as f32 * 50.0, glam::vec3(0.0, 0.0, 1.0));
 
-                uniform_buffer
-                    .from_data(deferred_vert::ty::MvpData {
-                        model: mvp.model.to_cols_array_2d(),
-                        view: mvp.view.to_cols_array_2d(),
-                        projection: mvp.projection.to_cols_array_2d(),
-                    })
-                    .unwrap()
+                let uniform_data = deferred_vert::ty::MvpData {
+                    model: model.model_matrix().to_cols_array_2d(),
+                    view: mvp.view.to_cols_array_2d(),
+                    projection: mvp.projection.to_cols_array_2d(),
+                };
+
+                uniform_buffer.from_data(uniform_data).unwrap()
             };
 
             let ambient_buffer: CpuBufferPool<ambient_frag::ty::AmbientLightData> =
