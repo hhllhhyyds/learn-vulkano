@@ -24,3 +24,25 @@ impl Default for MVP {
         Self::new()
     }
 }
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Pod, Zeroable)]
+pub struct VP {
+    pub view: Mat4,
+    pub projection: Mat4,
+}
+
+impl VP {
+    pub fn new() -> VP {
+        VP {
+            view: Mat4::IDENTITY,
+            projection: Mat4::IDENTITY,
+        }
+    }
+}
+
+impl Default for VP {
+    fn default() -> Self {
+        Self::new()
+    }
+}

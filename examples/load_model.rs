@@ -229,7 +229,21 @@ fn main() {
     )
     .unwrap();
 
-    let mut mvp = learn_vulkano::mvp::MVP::new();
+    let mut vp = learn_vulkano::mvp::VP::new();
+    let vp_buffer = CpuAccessibleBuffer::from_data(
+        &memory_allocator,
+        BufferUsage {
+            uniform_buffer: true,
+            ..BufferUsage::empty()
+        },
+        false,
+        deferred_vert::ty::VpData {
+            view: vp.view.to_cols_array_2d(),
+            projection: vp.projection.to_cols_array_2d(),
+        },
+    )
+    .unwrap();
+
     let ambient_light = AmbientLight {
         color: [1.0, 1.0, 1.0],
         intensity: 0.2,
@@ -249,6 +263,14 @@ fn main() {
     let command_buffer_allocator =
         StandardCommandBufferAllocator::new(device.clone(), Default::default());
     let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
+
+    let vp_layout = deferred_pipeline.layout().set_layouts().first().unwrap();
+    let mut vp_set = PersistentDescriptorSet::new(
+        &descriptor_set_allocator,
+        vp_layout.clone(),
+        [WriteDescriptorSet::buffer(0, vp_buffer)],
+    )
+    .unwrap();
 
     let mut recreate_swapchain = false;
     let mut previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>);
@@ -274,30 +296,25 @@ fn main() {
                 .unwrap()
                 .cleanup_finished();
 
-            let uniform_buffer: CpuBufferPool<deferred_vert::ty::MvpData> =
+            let model_uniform_buffer: CpuBufferPool<deferred_vert::ty::ModelData> =
                 CpuBufferPool::uniform_buffer(memory_allocator.clone());
-            let uniform_subbuffer = {
+            let model_uniform_subbuffer = {
                 let elapsed = rotation_start.elapsed().as_secs() as f64
                     + rotation_start.elapsed().subsec_nanos() as f64 / 1_000_000_000.0;
                 let elapsed_as_radians = elapsed * PI as f64 / 180.0;
-                let image_extent: [u32; 2] =
-                    learn_vulkano::swapchain::surface_extent(&surface).into();
-                let aspect_ratio = image_extent[0] as f32 / image_extent[1] as f32;
-                mvp.projection =
-                    glam::Mat4::perspective_rh_gl(FRAC_PI_2, aspect_ratio, 0.01, 100.0);
+
                 model.zero_rotation();
                 model.rotate(PI, glam::vec3(0.0, 1.0, 0.0));
                 model.rotate(elapsed_as_radians as f32 * 10.0, glam::vec3(1.0, 0.0, 0.0));
                 model.rotate(elapsed_as_radians as f32 * 30.0, glam::vec3(0.0, 1.0, 0.0));
                 model.rotate(elapsed_as_radians as f32 * 50.0, glam::vec3(0.0, 0.0, 1.0));
 
-                let uniform_data = deferred_vert::ty::MvpData {
+                let uniform_data = deferred_vert::ty::ModelData {
                     model: model.model_matrix().to_cols_array_2d(),
-                    view: mvp.view.to_cols_array_2d(),
-                    projection: mvp.projection.to_cols_array_2d(),
+                    normals: model.normal_matrix().to_cols_array_2d(),
                 };
 
-                uniform_buffer.from_data(uniform_data).unwrap()
+                model_uniform_buffer.from_data(uniform_data).unwrap()
             };
 
             let ambient_buffer: CpuBufferPool<ambient_frag::ty::AmbientLightData> =
@@ -314,11 +331,14 @@ fn main() {
             let directional_buffer: CpuBufferPool<directional_frag::ty::DirectionalLightData> =
                 CpuBufferPool::uniform_buffer(memory_allocator.clone());
 
-            let deferred_layout = deferred_pipeline.layout().set_layouts().first().unwrap();
-            let deferred_set = PersistentDescriptorSet::new(
+            let model_layout = deferred_pipeline.layout().set_layouts().get(1).unwrap();
+            let model_set = PersistentDescriptorSet::new(
                 &descriptor_set_allocator,
-                deferred_layout.clone(),
-                [WriteDescriptorSet::buffer(0, uniform_subbuffer.clone())],
+                model_layout.clone(),
+                [WriteDescriptorSet::buffer(
+                    0,
+                    model_uniform_subbuffer.clone(),
+                )],
             )
             .unwrap();
 
@@ -334,6 +354,11 @@ fn main() {
             .unwrap();
 
             if recreate_swapchain {
+                let image_extent: [u32; 2] =
+                    learn_vulkano::swapchain::surface_extent(&surface).into();
+                let aspect_ratio = image_extent[0] as f32 / image_extent[1] as f32;
+                vp.projection = glam::Mat4::perspective_rh_gl(FRAC_PI_2, aspect_ratio, 0.01, 100.0);
+
                 let (new_swapchain, new_images) =
                     learn_vulkano::swapchain::create_swapchain_and_images(
                         device.clone(),
@@ -352,6 +377,28 @@ fn main() {
                 framebuffers = new_framebuffers;
                 color_buffer = new_color_buffer;
                 normal_buffer = new_normal_buffer;
+
+                let new_vp_buffer = CpuAccessibleBuffer::from_data(
+                    &memory_allocator,
+                    BufferUsage {
+                        uniform_buffer: true,
+                        ..BufferUsage::empty()
+                    },
+                    false,
+                    deferred_vert::ty::VpData {
+                        view: vp.view.to_cols_array_2d(),
+                        projection: vp.projection.to_cols_array_2d(),
+                    },
+                )
+                .unwrap();
+
+                let vp_layout = deferred_pipeline.layout().set_layouts().first().unwrap();
+                vp_set = PersistentDescriptorSet::new(
+                    &descriptor_set_allocator,
+                    vp_layout.clone(),
+                    [WriteDescriptorSet::buffer(0, new_vp_buffer)],
+                )
+                .unwrap();
 
                 recreate_swapchain = false;
             }
@@ -408,7 +455,7 @@ fn main() {
                     PipelineBindPoint::Graphics,
                     deferred_pipeline.layout().clone(),
                     0,
-                    deferred_set.clone(),
+                    (vp_set.clone(), model_set.clone()),
                 )
                 .bind_vertex_buffers(0, vertex_buffer.clone())
                 .draw(vertex_buffer.len() as u32, 1, 0, 0)

@@ -305,12 +305,17 @@ pub struct Model {
     // only recreate the model matrices when needed.
     // Use a Cell with the interior mutability pattern,
     // so that it can be modified by methods that don't take &mut self
-    cache: Cell<Option<ModelMatrices>>,
+    cache: Cell<Option<(ModelMatrices, NormalMatrices)>>,
 }
 
 #[derive(Copy, Clone)]
 struct ModelMatrices {
     model: Mat4,
+}
+
+#[derive(Copy, Clone)]
+struct NormalMatrices {
+    normal: Mat4,
 }
 
 pub struct ModelBuilder {
@@ -365,15 +370,32 @@ impl Model {
 
     pub fn model_matrix(&self) -> Mat4 {
         if let Some(cache) = self.cache.get() {
-            return cache.model;
+            return cache.0.model;
         }
 
         // recalculate matrix
         let model = self.translation * self.rotation;
+        let normal = model.inverse().transpose();
 
-        self.cache.set(Some(ModelMatrices { model }));
+        self.cache
+            .set(Some((ModelMatrices { model }, NormalMatrices { normal })));
 
         model
+    }
+
+    pub fn normal_matrix(&self) -> Mat4 {
+        if let Some(cache) = self.cache.get() {
+            return cache.1.normal;
+        }
+
+        // recalculate matrix
+        let model = self.translation * self.rotation;
+        let normal = model.inverse().transpose();
+
+        self.cache
+            .set(Some((ModelMatrices { model }, NormalMatrices { normal })));
+
+        normal
     }
 
     pub fn rotate(&mut self, radians: f32, v: Vec3) {
