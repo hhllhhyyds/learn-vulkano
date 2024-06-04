@@ -3,7 +3,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use glam::Vec3Swizzles;
-use learn_vulkano::obj_loader::{DummyVertex, Model, NormalVertex};
+
 use vulkano::buffer::cpu_pool::CpuBufferPoolSubbuffer;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool, TypedBufferAccess};
 use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
@@ -29,6 +29,9 @@ use vulkano::sync::{self, FlushError, GpuFuture};
 
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::ControlFlow;
+
+use learn_vulkano::light::{AmbientLight, DirectionalLight};
+use learn_vulkano::obj_loader::{DummyVertex, Model, NormalVertex};
 
 mod deferred_frag {
     vulkano_shaders::shader! {
@@ -57,7 +60,6 @@ mod directional_vert {
     vulkano_shaders::shader! {
         ty: "vertex",
         path: "examples/load_model/shaders/directional.vert",
-        types_meta: { #[derive(Clone, Copy, bytemuck::Zeroable, bytemuck::Pod)] },
     }
 }
 
@@ -65,7 +67,6 @@ mod ambient_vert {
     vulkano_shaders::shader! {
         ty: "vertex",
         path: "examples/load_model/shaders/ambient.vert",
-        types_meta: { #[derive(Clone, Copy, bytemuck::Zeroable, bytemuck::Pod)] },
     }
 }
 
@@ -148,23 +149,25 @@ fn main() {
     let ambient_vert = ambient_vert::load(device.clone()).unwrap();
     let ambient_frag = ambient_frag::load(device.clone()).unwrap();
 
-    let deferred_pipeline = GraphicsPipeline::start()
-        .vertex_input_state(BuffersDefinition::new().vertex::<NormalVertex>())
-        .vertex_shader(deferred_vert.entry_point("main").unwrap(), ())
+    let part_pipeline = GraphicsPipeline::start()
         .input_assembly_state(InputAssemblyState::new())
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+        .rasterization_state(RasterizationState::new().cull_mode(CullMode::Back));
+
+    let deferred_pipeline = part_pipeline
+        .clone()
+        .vertex_input_state(BuffersDefinition::new().vertex::<NormalVertex>())
+        .vertex_shader(deferred_vert.entry_point("main").unwrap(), ())
         .fragment_shader(deferred_frag.entry_point("main").unwrap(), ())
         .depth_stencil_state(DepthStencilState::simple_depth_test())
-        .rasterization_state(RasterizationState::new().cull_mode(CullMode::Back))
         .render_pass(deferred_pass)
         .build(device.clone())
         .unwrap();
 
-    let ambient_pipeline = GraphicsPipeline::start()
+    let ambient_pipeline = part_pipeline
+        .clone()
         .vertex_input_state(BuffersDefinition::new().vertex::<DummyVertex>())
         .vertex_shader(ambient_vert.entry_point("main").unwrap(), ())
-        .input_assembly_state(InputAssemblyState::new())
-        .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
         .fragment_shader(ambient_frag.entry_point("main").unwrap(), ())
         .color_blend_state(
             ColorBlendState::new(lighting_pass.num_color_attachments()).blend(AttachmentBlend {
@@ -176,17 +179,14 @@ fn main() {
                 alpha_destination: BlendFactor::One,
             }),
         )
-        .depth_stencil_state(DepthStencilState::simple_depth_test())
-        .rasterization_state(RasterizationState::new().cull_mode(CullMode::Back))
         .render_pass(lighting_pass.clone())
         .build(device.clone())
         .unwrap();
 
-    let directional_pipeline = GraphicsPipeline::start()
+    let directional_pipeline = part_pipeline
+        .clone()
         .vertex_input_state(BuffersDefinition::new().vertex::<DummyVertex>())
         .vertex_shader(directional_vert.entry_point("main").unwrap(), ())
-        .input_assembly_state(InputAssemblyState::new())
-        .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
         .color_blend_state(
             ColorBlendState::new(lighting_pass.num_color_attachments()).blend(AttachmentBlend {
                 color_op: BlendOp::Add,
@@ -198,8 +198,6 @@ fn main() {
             }),
         )
         .fragment_shader(directional_frag.entry_point("main").unwrap(), ())
-        .depth_stencil_state(DepthStencilState::simple_depth_test())
-        .rasterization_state(RasterizationState::new().cull_mode(CullMode::Back))
         .render_pass(lighting_pass.clone())
         .build(device.clone())
         .unwrap();
@@ -227,18 +225,16 @@ fn main() {
             ..BufferUsage::empty()
         },
         false,
-        learn_vulkano::obj_loader::DummyVertex::list()
-            .iter()
-            .cloned(),
+        DummyVertex::list().iter().cloned(),
     )
     .unwrap();
 
     let mut mvp = learn_vulkano::mvp::MVP::new();
-    let ambient_light = learn_vulkano::light::AmbientLight {
+    let ambient_light = AmbientLight {
         color: [1.0, 1.0, 1.0],
         intensity: 0.2,
     };
-    let directional_light_w = learn_vulkano::light::DirectionalLight {
+    let directional_light_w = DirectionalLight {
         position: [-4.0, 0.0, -4.0],
         color: [2.0, 2.0, 2.0],
     };
