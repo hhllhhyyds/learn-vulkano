@@ -12,12 +12,6 @@ fn main() {
     let event_loop = EventLoop::new();
     let mut system = RenderSystem::new(&event_loop);
 
-    // system.set_view(&glam::Mat4::from_mat3(glam::Mat3 {
-    //     x_axis: glam::vec3(0.0, 0.0, 0.1),
-    //     y_axis: glam::vec3(0.0, 0.0, 0.0),
-    //     z_axis: glam::vec3(0.0, 1.0, 0.0),
-    // }));
-
     let mut teapot = Model::new("models/teapot.obj").build();
     teapot.translate(glam::vec3(-5.0, 2.0, -8.0));
 
