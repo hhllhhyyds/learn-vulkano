@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
-use vulkano::instance::{Instance, InstanceCreateInfo};
-use vulkano::{Version, VulkanLibrary};
+use vulkano::{
+    instance::{Instance, InstanceCreateInfo},
+    Version, VulkanLibrary,
+};
 
 pub fn create_instance_for_window_app() -> Arc<Instance> {
     let library = VulkanLibrary::new().expect("Failed to load vulkan library");

@@ -1,3 +1,5 @@
+#![allow(clippy::get_first)]
+
 use std::sync::Arc;
 
 use vulkano::{
@@ -37,7 +39,7 @@ use vulkano_win::VkSurfaceBuild;
 
 use winit::{event_loop::EventLoop, window::WindowBuilder};
 
-use super::swapchain::VP;
+use super::{light, obj_loader, shaders, view_projection};
 
 #[derive(Debug, Clone)]
 enum RenderStage {
@@ -45,24 +47,25 @@ enum RenderStage {
     Deferred,
     Ambient,
     Directional,
+    #[allow(unused)]
     NeedsRedraw,
 }
 
 pub struct RenderSystem {
+    #[allow(unused)]
     instance: Arc<Instance>,
     surface: Arc<Surface>,
     device: Arc<Device>,
     queue: Arc<Queue>,
-    graphic_queue_family_index: u32,
     swapchain: Arc<Swapchain>,
+    #[allow(unused)]
     swapchain_images: Vec<Arc<SwapchainImage>>,
     memory_allocator: Arc<StandardMemoryAllocator>,
     descriptor_set_allocator: StandardDescriptorSetAllocator,
     command_buffer_allocator: StandardCommandBufferAllocator,
-    model_uniform_buffer_pool: CpuBufferPool<super::shaders::deferred_vert::ty::ModelData>,
-    ambient_buffer: Arc<CpuAccessibleBuffer<super::shaders::ambient_frag::ty::AmbientLightData>>,
-    directional_buffer_pool:
-        CpuBufferPool<super::shaders::directional_frag::ty::DirectionalLightData>,
+    model_uniform_buffer_pool: CpuBufferPool<shaders::deferred_vert::ty::ModelData>,
+    directional_uniform_buffer_pool:
+        CpuBufferPool<shaders::directional_frag::ty::DirectionalLightData>,
     render_pass: Arc<RenderPass>,
     deferred_pipeline: Arc<GraphicsPipeline>,
     directional_pipeline: Arc<GraphicsPipeline>,
@@ -70,9 +73,10 @@ pub struct RenderSystem {
     framebuffers: Vec<Arc<Framebuffer>>,
     color_buffer: Arc<ImageView<AttachmentImage>>,
     normal_buffer: Arc<ImageView<AttachmentImage>>,
-    dummy_verts: Arc<CpuAccessibleBuffer<[super::obj_loader::DummyVertex]>>,
-    vp: super::swapchain::VP,
-    vp_buffer: Arc<CpuAccessibleBuffer<super::shaders::deferred_vert::ty::VpData>>,
+    dummy_verts: Arc<CpuAccessibleBuffer<[obj_loader::DummyVertex]>>,
+    ambient_buffer: Arc<CpuAccessibleBuffer<shaders::ambient_frag::ty::AmbientLightData>>,
+    vp: view_projection::VP,
+    vp_buffer: Arc<CpuAccessibleBuffer<shaders::deferred_vert::ty::VpData>>,
     vp_set: Arc<PersistentDescriptorSet>,
     render_stage: RenderStage,
     commands: Option<AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>>,
@@ -86,12 +90,9 @@ impl RenderSystem {
         let surface = WindowBuilder::new()
             .build_vk_surface(event_loop, instance.clone())
             .expect("Failed to build vulkan surface");
-        let device_and_queue = super::device::create_device_and_queue_for_window_app(
-            instance.clone(),
-            surface.clone(),
-        );
-        let graphic_queue_family_index = device_and_queue.get_queue_family_index();
-        let (device, queue) = device_and_queue.get_logical_and_first_queue();
+        let (device, queue) =
+            super::device::DeviceAndQueue::new_for_window_app(instance.clone(), surface.clone())
+                .get_device_and_first_queue();
         let (swapchain, swapchain_images) =
             super::swapchain::create_swapchain_and_images(device.clone(), surface.clone(), None);
         let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
@@ -99,30 +100,17 @@ impl RenderSystem {
         let command_buffer_allocator =
             StandardCommandBufferAllocator::new(device.clone(), Default::default());
 
-        let deferred_vert = super::shaders::deferred_vert::load(device.clone()).unwrap();
-        let deferred_frag = super::shaders::deferred_frag::load(device.clone()).unwrap();
-        let directional_vert = super::shaders::directional_vert::load(device.clone()).unwrap();
-        let directional_frag = super::shaders::directional_frag::load(device.clone()).unwrap();
-        let ambient_vert = super::shaders::ambient_vert::load(device.clone()).unwrap();
-        let ambient_frag = super::shaders::ambient_frag::load(device.clone()).unwrap();
+        let deferred_vert = shaders::deferred_vert::load(device.clone()).unwrap();
+        let deferred_frag = shaders::deferred_frag::load(device.clone()).unwrap();
+        let directional_vert = shaders::directional_vert::load(device.clone()).unwrap();
+        let directional_frag = shaders::directional_frag::load(device.clone()).unwrap();
+        let ambient_vert = shaders::ambient_vert::load(device.clone()).unwrap();
+        let ambient_frag = shaders::ambient_frag::load(device.clone()).unwrap();
 
-        let model_uniform_buffer_pool: CpuBufferPool<super::shaders::deferred_vert::ty::ModelData> =
+        let model_uniform_buffer_pool: CpuBufferPool<shaders::deferred_vert::ty::ModelData> =
             CpuBufferPool::uniform_buffer(memory_allocator.clone());
-        let ambient_buffer = CpuAccessibleBuffer::from_data(
-            &memory_allocator,
-            BufferUsage {
-                uniform_buffer: true,
-                ..BufferUsage::empty()
-            },
-            false,
-            super::shaders::ambient_frag::ty::AmbientLightData {
-                color: [1.0, 1.0, 1.0],
-                intensity: 0.1,
-            },
-        )
-        .unwrap();
-        let directional_buffer_pool: CpuBufferPool<
-            super::shaders::directional_frag::ty::DirectionalLightData,
+        let directional_uniform_buffer_pool: CpuBufferPool<
+            shaders::directional_frag::ty::DirectionalLightData,
         > = CpuBufferPool::uniform_buffer(memory_allocator.clone());
 
         let render_pass = vulkano::ordered_passes_renderpass!(device.clone(),
@@ -171,9 +159,7 @@ impl RenderSystem {
         let lighting_pass = Subpass::from(render_pass.clone(), 1).unwrap();
 
         let deferred_pipeline = GraphicsPipeline::start()
-            .vertex_input_state(
-                BuffersDefinition::new().vertex::<super::obj_loader::NormalVertex>(),
-            )
+            .vertex_input_state(BuffersDefinition::new().vertex::<obj_loader::NormalVertex>())
             .vertex_shader(deferred_vert.entry_point("main").unwrap(), ())
             .input_assembly_state(InputAssemblyState::new())
             .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
@@ -185,7 +171,7 @@ impl RenderSystem {
             .expect("Failed to create pipeline");
 
         let directional_pipeline = GraphicsPipeline::start()
-            .vertex_input_state(BuffersDefinition::new().vertex::<super::obj_loader::DummyVertex>())
+            .vertex_input_state(BuffersDefinition::new().vertex::<obj_loader::DummyVertex>())
             .vertex_shader(directional_vert.entry_point("main").unwrap(), ())
             .input_assembly_state(InputAssemblyState::new())
             .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
@@ -207,7 +193,7 @@ impl RenderSystem {
             .expect("Failed to create pipeline");
 
         let ambient_pipeline = GraphicsPipeline::start()
-            .vertex_input_state(BuffersDefinition::new().vertex::<super::obj_loader::DummyVertex>())
+            .vertex_input_state(BuffersDefinition::new().vertex::<obj_loader::DummyVertex>())
             .vertex_shader(ambient_vert.entry_point("main").unwrap(), ())
             .input_assembly_state(InputAssemblyState::new())
             .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
@@ -241,12 +227,26 @@ impl RenderSystem {
                 ..BufferUsage::empty()
             },
             false,
-            super::obj_loader::DummyVertex::list().iter().cloned(),
+            obj_loader::DummyVertex::list().iter().cloned(),
         )
         .unwrap();
 
-        let vp = super::swapchain::VP::from_surface(&surface);
-        let vp_buffer = vp.create_vp_uniform_buffer(memory_allocator.clone());
+        let ambient_buffer = CpuAccessibleBuffer::from_data(
+            &memory_allocator,
+            BufferUsage {
+                uniform_buffer: true,
+                ..BufferUsage::empty()
+            },
+            false,
+            shaders::ambient_frag::ty::AmbientLightData {
+                color: [1.0, 1.0, 1.0],
+                intensity: 0.1,
+            },
+        )
+        .unwrap();
+
+        let vp = view_projection::VP::from_surface(&surface);
+        let vp_buffer = vp.create_uniform_buffer(memory_allocator.clone());
         let vp_layout = deferred_pipeline.layout().set_layouts().get(0).unwrap();
         let vp_set = PersistentDescriptorSet::new(
             &descriptor_set_allocator,
@@ -260,15 +260,13 @@ impl RenderSystem {
             surface,
             device,
             queue,
-            graphic_queue_family_index,
             swapchain,
             swapchain_images,
             memory_allocator,
             descriptor_set_allocator,
             command_buffer_allocator,
             model_uniform_buffer_pool,
-            ambient_buffer,
-            directional_buffer_pool,
+            directional_uniform_buffer_pool,
             render_pass,
             deferred_pipeline,
             directional_pipeline,
@@ -277,6 +275,7 @@ impl RenderSystem {
             color_buffer,
             normal_buffer,
             dummy_verts,
+            ambient_buffer,
             vp,
             vp_buffer,
             vp_set,
@@ -288,10 +287,8 @@ impl RenderSystem {
     }
 
     pub fn set_view(&mut self, view: &glam::Mat4) {
-        self.vp.view = view.clone();
-        self.vp_buffer = self
-            .vp
-            .create_vp_uniform_buffer(self.memory_allocator.clone());
+        self.vp.view = *view;
+        self.vp_buffer = self.vp.create_uniform_buffer(self.memory_allocator.clone());
 
         let vp_layout = self
             .deferred_pipeline
@@ -349,7 +346,7 @@ impl RenderSystem {
 
         let mut commands = AutoCommandBufferBuilder::primary(
             &self.command_buffer_allocator,
-            self.graphic_queue_family_index,
+            self.queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();
@@ -371,7 +368,7 @@ impl RenderSystem {
         self.acquire_future = Some(acquire_future);
     }
 
-    pub fn render_model(&mut self, model: &mut super::obj_loader::Model) {
+    pub fn render_model(&mut self, model: &mut obj_loader::Model) {
         match self.render_stage {
             RenderStage::Deferred => {}
             RenderStage::NeedsRedraw => {
@@ -390,7 +387,7 @@ impl RenderSystem {
         let model_subbuffer = {
             let (model_mat, normal_mat) = (model.model_matrix(), model.normal_matrix());
 
-            let uniform_data = super::shaders::deferred_vert::ty::ModelData {
+            let uniform_data = shaders::deferred_vert::ty::ModelData {
                 model: model_mat.to_cols_array_2d(),
                 normals: normal_mat.to_cols_array_2d(),
             };
@@ -424,17 +421,11 @@ impl RenderSystem {
         )
         .unwrap();
 
+        let view_port = self.view_port_from_surface();
         self.commands
             .as_mut()
             .unwrap()
-            .set_viewport(
-                0,
-                [Viewport {
-                    origin: [0.0, 0.0],
-                    dimensions: super::swapchain::surface_extent(&self.surface).into(),
-                    depth_range: 0.0..1.0,
-                }],
-            )
+            .set_viewport(0, [view_port])
             .bind_pipeline_graphics(self.deferred_pipeline.clone())
             .bind_descriptor_sets(
                 PipelineBindPoint::Graphics,
@@ -447,7 +438,7 @@ impl RenderSystem {
             .unwrap();
     }
 
-    pub fn render_directional(&mut self, directional_light: &super::light::DirectionalLight) {
+    pub fn render_directional(&mut self, directional_light: &light::DirectionalLight) {
         match self.render_stage {
             RenderStage::Ambient => {
                 self.render_stage = RenderStage::Directional;
@@ -466,7 +457,7 @@ impl RenderSystem {
             }
         }
 
-        let directional_subbuffer = self.generate_directional_buffer(&directional_light);
+        let directional_subbuffer = self.generate_directional_buffer(directional_light);
 
         let directional_layout = self
             .directional_pipeline
@@ -485,17 +476,11 @@ impl RenderSystem {
         )
         .unwrap();
 
+        let view_port = self.view_port_from_surface();
         self.commands
             .as_mut()
             .unwrap()
-            .set_viewport(
-                0,
-                [Viewport {
-                    origin: [0.0, 0.0],
-                    dimensions: super::swapchain::surface_extent(&self.surface).into(),
-                    depth_range: 0.0..1.0,
-                }],
-            )
+            .set_viewport(0, [view_port])
             .bind_pipeline_graphics(self.directional_pipeline.clone())
             .bind_vertex_buffers(0, self.dummy_verts.clone())
             .bind_descriptor_sets(
@@ -506,10 +491,6 @@ impl RenderSystem {
             )
             .draw(self.dummy_verts.len() as u32, 1, 0, 0)
             .unwrap();
-    }
-
-    pub fn device(&self) -> Arc<Device> {
-        self.device.clone()
     }
 
     pub fn render_ambient(&mut self) {
@@ -544,6 +525,7 @@ impl RenderSystem {
         )
         .unwrap();
 
+        let view_port = self.view_port_from_surface();
         self.commands
             .as_mut()
             .unwrap()
@@ -556,14 +538,7 @@ impl RenderSystem {
                 0,
                 ambient_set.clone(),
             )
-            .set_viewport(
-                0,
-                [Viewport {
-                    origin: [0.0, 0.0],
-                    dimensions: super::swapchain::surface_extent(&self.surface).into(),
-                    depth_range: 0.0..1.0,
-                }],
-            )
+            .set_viewport(0, [view_port])
             .bind_vertex_buffers(0, self.dummy_verts.clone())
             .draw(self.dummy_verts.len() as u32, 1, 0, 0)
             .unwrap();
@@ -639,13 +614,13 @@ impl RenderSystem {
                 ..BufferUsage::empty()
             },
             false,
-            super::shaders::ambient_frag::ty::AmbientLightData { color, intensity },
+            shaders::ambient_frag::ty::AmbientLightData { color, intensity },
         )
         .unwrap();
     }
 
     pub fn recreate_swapchain(&mut self) {
-        self.vp.projection = VP::from_surface(&self.surface).projection;
+        self.vp.projection = view_projection::VP::from_surface(&self.surface).projection;
 
         let (new_swapchain, new_images) = super::swapchain::create_swapchain_and_images(
             self.device.clone(),
@@ -664,9 +639,7 @@ impl RenderSystem {
         self.color_buffer = new_color_buffer;
         self.normal_buffer = new_normal_buffer;
 
-        self.vp_buffer = self
-            .vp
-            .create_vp_uniform_buffer(self.memory_allocator.clone());
+        self.vp_buffer = self.vp.create_uniform_buffer(self.memory_allocator.clone());
 
         let vp_layout = self
             .deferred_pipeline
@@ -682,19 +655,30 @@ impl RenderSystem {
         .unwrap();
     }
 
+    pub fn device(&self) -> Arc<Device> {
+        self.device.clone()
+    }
+
+    fn view_port_from_surface(&self) -> Viewport {
+        Viewport {
+            origin: [0.0, 0.0],
+            dimensions: super::swapchain::surface_extent(&self.surface).into(),
+            depth_range: 0.0..1.0,
+        }
+    }
+
     fn generate_directional_buffer(
         &self,
-        light: &super::light::DirectionalLight,
-    ) -> Arc<CpuBufferPoolSubbuffer<super::shaders::directional_frag::ty::DirectionalLightData>>
-    {
+        light: &light::DirectionalLight,
+    ) -> Arc<CpuBufferPoolSubbuffer<shaders::directional_frag::ty::DirectionalLightData>> {
         use glam::swizzles::Vec3Swizzles;
         let position = glam::Vec3::from_array(light.position);
-        let uniform_data = super::shaders::directional_frag::ty::DirectionalLightData {
+        let uniform_data = shaders::directional_frag::ty::DirectionalLightData {
             position: position.xyzz().into(),
-            color: light.color.into(),
+            color: light.color,
         };
 
-        self.directional_buffer_pool
+        self.directional_uniform_buffer_pool
             .from_data(uniform_data)
             .unwrap()
     }

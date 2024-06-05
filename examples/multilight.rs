@@ -545,7 +545,7 @@ fn generate_directional_buffer(
     let position = glam::Vec3::from_array(light.position);
     let uniform_data = directional_frag::ty::DirectionalLightData {
         position: position.xyzz().into(),
-        color: light.color.into(),
+        color: light.color,
     };
 
     pool.from_data(uniform_data).unwrap()

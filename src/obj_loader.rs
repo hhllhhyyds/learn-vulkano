@@ -1,3 +1,5 @@
+#![allow(clippy::all)]
+
 use std::cell::Cell;
 use std::fmt;
 use std::fs::File;
