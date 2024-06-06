@@ -12,26 +12,24 @@ fn main() {
     let event_loop = EventLoop::new();
     let mut system = RenderSystem::new(&event_loop);
 
+    system.set_view(&(glam::Mat4::from_translation(glam::vec3(0., 0., -7.))));
+
     let mut teapot = Model::new("models/teapot.obj").build();
-    teapot.translate(glam::vec3(-5.0, 2.0, -8.0));
+    teapot.translate(glam::vec3(-5.0, 2.0, -3.0));
 
     let mut suzanne = Model::new("models/suzanne.obj").build();
-    suzanne.translate(glam::vec3(5.0, 2.0, -6.0));
+    suzanne.translate(glam::vec3(5.0, 2.0, -3.0));
 
     let mut torus = Model::new("models/torus.obj").build();
-    torus.translate(glam::vec3(0.0, -2.0, -5.0));
+    torus.translate(glam::vec3(0.0, 0.0, -3.0));
 
-    let directional_light_r = DirectionalLight {
+    let mut directional_light_r = DirectionalLight {
         position: [-4.0, -4.0, 0.0],
         color: [1.0, 0.0, 0.0],
     };
-    let directional_light_g = DirectionalLight {
+    let mut directional_light_g = DirectionalLight {
         position: [4.0, -4.0, 0.0],
         color: [0.0, 1.0, 0.0],
-    };
-    let directional_light_b = DirectionalLight {
-        position: [0.0, 4.0, 0.0],
-        color: [0.0, 0.0, 1.0],
     };
 
     let mut previous_frame_end =
@@ -78,6 +76,23 @@ fn main() {
             torus.rotate(elapsed_as_radians as f32 * 45.0, glam::vec3(0.0, 1.0, 0.0));
             torus.rotate(elapsed_as_radians as f32 * 12.0, glam::vec3(1.0, 0.0, 0.0));
 
+            directional_light_r.position =
+                glam::Quat::from_rotation_z(elapsed_as_radians as f32 * 0.3)
+                    .mul_vec3(glam::Vec3::from(directional_light_r.position))
+                    .into();
+            directional_light_g.position =
+                glam::Quat::from_rotation_x(elapsed_as_radians as f32 * 0.2)
+                    .mul_vec3(glam::Vec3::from(directional_light_g.position))
+                    .into();
+
+            let x = 2.0 * (elapsed_as_radians * 50.).cos();
+            let z = -3.0 + (2.0 * (elapsed_as_radians * 50.).sin());
+
+            let directional_light_b = DirectionalLight {
+                position: [x as f32, 0.0, z as f32],
+                color: [0.0, 0.0, 1.0],
+            };
+
             system.start_frame();
             system.render_model(&mut teapot);
             system.render_model(&mut suzanne);
@@ -86,6 +101,9 @@ fn main() {
             system.render_directional(&directional_light_r);
             system.render_directional(&directional_light_g);
             system.render_directional(&directional_light_b);
+            system.render_light_object(&directional_light_r);
+            system.render_light_object(&directional_light_g);
+            system.render_light_object(&directional_light_b);
             system.finish_frame(&mut previous_frame_end);
         }
         _ => {}

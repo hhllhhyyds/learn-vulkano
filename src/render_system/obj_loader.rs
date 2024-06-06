@@ -236,6 +236,7 @@ pub struct ColoredVertex {
     pub position: [f32; 3],
     pub color: [f32; 3],
 }
+vulkano::impl_vertex!(ColoredVertex, position, color);
 
 /// A structure used for the vertex information starting
 /// from our lesson on lighting
@@ -301,6 +302,7 @@ pub struct Model {
     data: Vec<NormalVertex>,
     translation: Mat4,
     rotation: Mat4,
+    uniform_scale: f32,
 
     // We might call multiple translation/rotation calls
     // in between asking for the model matrix. This lets us
@@ -324,6 +326,7 @@ pub struct ModelBuilder {
     file_name: String,
     custom_color: [f32; 3],
     invert: bool,
+    scale_factor: f32,
 }
 
 impl ModelBuilder {
@@ -332,6 +335,7 @@ impl ModelBuilder {
             file_name: file,
             custom_color: [1.0, 0.35, 0.137],
             invert: true,
+            scale_factor: 1.0,
         }
     }
 
@@ -341,6 +345,7 @@ impl ModelBuilder {
             data: loader.as_normal_vertices(),
             translation: Mat4::IDENTITY,
             rotation: Mat4::IDENTITY,
+            uniform_scale: self.scale_factor,
             cache: Cell::new(None),
         }
     }
@@ -359,6 +364,11 @@ impl ModelBuilder {
         self.invert = invert;
         self
     }
+
+    pub fn uniform_scale_factor(mut self, scale: f32) -> ModelBuilder {
+        self.scale_factor = scale;
+        self
+    }
 }
 
 impl Model {
@@ -370,6 +380,17 @@ impl Model {
         self.data.clone()
     }
 
+    pub fn color_data(&self) -> Vec<ColoredVertex> {
+        let mut ret: Vec<ColoredVertex> = Vec::new();
+        for v in &self.data {
+            ret.push(ColoredVertex {
+                position: v.position,
+                color: v.color,
+            });
+        }
+        ret
+    }
+
     pub fn model_matrix(&self) -> Mat4 {
         if let Some(cache) = self.cache.get() {
             return cache.0.model;
@@ -377,6 +398,7 @@ impl Model {
 
         // recalculate matrix
         let model = self.translation * self.rotation;
+        let model = model * Mat4::from_scale([self.uniform_scale; 3].into());
         let normal = model.inverse().transpose();
 
         self.cache
@@ -392,6 +414,7 @@ impl Model {
 
         // recalculate matrix
         let model = self.translation * self.rotation;
+        let model = model * Mat4::from_scale([self.uniform_scale; 3].into());
         let normal = model.inverse().transpose();
 
         self.cache

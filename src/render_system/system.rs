@@ -47,6 +47,7 @@ enum RenderStage {
     Deferred,
     Ambient,
     Directional,
+    LightObject,
     #[allow(unused)]
     NeedsRedraw,
 }
@@ -70,6 +71,7 @@ pub struct RenderSystem {
     deferred_pipeline: Arc<GraphicsPipeline>,
     directional_pipeline: Arc<GraphicsPipeline>,
     ambient_pipeline: Arc<GraphicsPipeline>,
+    light_obj_pipeline: Arc<GraphicsPipeline>,
     framebuffers: Vec<Arc<Framebuffer>>,
     color_buffer: Arc<ImageView<AttachmentImage>>,
     normal_buffer: Arc<ImageView<AttachmentImage>>,
@@ -106,6 +108,8 @@ impl RenderSystem {
         let directional_frag = shaders::directional_frag::load(device.clone()).unwrap();
         let ambient_vert = shaders::ambient_vert::load(device.clone()).unwrap();
         let ambient_frag = shaders::ambient_frag::load(device.clone()).unwrap();
+        let light_obj_vert = shaders::light_obj_vert::load(device.clone()).unwrap();
+        let light_obj_frag = shaders::light_obj_frag::load(device.clone()).unwrap();
 
         let model_uniform_buffer_pool: CpuBufferPool<shaders::deferred_vert::ty::ModelData> =
             CpuBufferPool::uniform_buffer(memory_allocator.clone());
@@ -148,7 +152,7 @@ impl RenderSystem {
                 },
                 {
                     color: [final_color],
-                    depth_stencil: {},
+                    depth_stencil: {depth},
                     input: [color, normals]
                 }
             ]
@@ -214,6 +218,18 @@ impl RenderSystem {
             .build(device.clone())
             .expect("Failed to create pipeline");
 
+        let light_obj_pipeline = GraphicsPipeline::start()
+            .vertex_input_state(BuffersDefinition::new().vertex::<obj_loader::ColoredVertex>())
+            .vertex_shader(light_obj_vert.entry_point("main").unwrap(), ())
+            .input_assembly_state(InputAssemblyState::new())
+            .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+            .fragment_shader(light_obj_frag.entry_point("main").unwrap(), ())
+            .depth_stencil_state(DepthStencilState::simple_depth_test())
+            .rasterization_state(RasterizationState::new().cull_mode(CullMode::Back))
+            .render_pass(lighting_pass.clone())
+            .build(device.clone())
+            .unwrap();
+
         let (framebuffers, color_buffer, normal_buffer) = super::swapchain::create_framebuffer(
             &swapchain_images,
             render_pass.clone(),
@@ -271,6 +287,7 @@ impl RenderSystem {
             deferred_pipeline,
             directional_pipeline,
             ambient_pipeline,
+            light_obj_pipeline,
             framebuffers,
             color_buffer,
             normal_buffer,
@@ -544,9 +561,88 @@ impl RenderSystem {
             .unwrap();
     }
 
+    pub fn render_light_object(&mut self, directional_light: &light::DirectionalLight) {
+        match self.render_stage {
+            RenderStage::Directional => {
+                self.render_stage = RenderStage::LightObject;
+            }
+            RenderStage::LightObject => {}
+            RenderStage::NeedsRedraw => {
+                self.recreate_swapchain();
+                self.render_stage = RenderStage::Stopped;
+                self.commands = None;
+                return;
+            }
+            _ => {
+                self.render_stage = RenderStage::Stopped;
+                self.commands = None;
+                return;
+            }
+        }
+
+        let mut model = obj_loader::Model::new("models/sphere.obj")
+            .color(directional_light.color)
+            .uniform_scale_factor(0.2)
+            .build();
+
+        model.translate(directional_light.get_position());
+
+        let model_subbuffer = {
+            let (model_mat, normal_mat) = (model.model_matrix(), model.normal_matrix());
+
+            let uniform_data = shaders::deferred_vert::ty::ModelData {
+                model: model_mat.to_cols_array_2d(),
+                normals: normal_mat.to_cols_array_2d(),
+            };
+
+            self.model_uniform_buffer_pool
+                .from_data(uniform_data)
+                .unwrap()
+        };
+
+        let model_layout = self
+            .light_obj_pipeline
+            .layout()
+            .set_layouts()
+            .get(1)
+            .unwrap();
+        let model_set = PersistentDescriptorSet::new(
+            &self.descriptor_set_allocator,
+            model_layout.clone(),
+            [WriteDescriptorSet::buffer(0, model_subbuffer.clone())],
+        )
+        .unwrap();
+
+        let vertex_buffer = CpuAccessibleBuffer::from_iter(
+            &self.memory_allocator,
+            BufferUsage {
+                vertex_buffer: true,
+                ..BufferUsage::empty()
+            },
+            false,
+            model.color_data().iter().cloned(),
+        )
+        .unwrap();
+
+        self.commands
+            .as_mut()
+            .unwrap()
+            .bind_pipeline_graphics(self.light_obj_pipeline.clone())
+            .bind_descriptor_sets(
+                PipelineBindPoint::Graphics,
+                self.light_obj_pipeline.layout().clone(),
+                0,
+                (self.vp_set.clone(), model_set.clone()),
+            )
+            .bind_vertex_buffers(0, vertex_buffer.clone())
+            .draw(vertex_buffer.len() as u32, 1, 0, 0)
+            .unwrap();
+    }
+
     pub fn finish_frame(&mut self, previous_frame_end: &mut Option<Box<dyn GpuFuture>>) {
         match self.render_stage {
             RenderStage::Directional => {}
+            RenderStage::LightObject => {}
             RenderStage::NeedsRedraw => {
                 self.recreate_swapchain();
                 self.commands = None;

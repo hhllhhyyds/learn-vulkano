@@ -42,3 +42,21 @@ pub(super) mod ambient_frag {
         types_meta: { #[derive(Clone, Copy, bytemuck::Zeroable, bytemuck::Pod)] },
     }
 }
+
+pub(super) mod light_obj_vert {
+    vulkano_shaders::shader! {
+        ty: "vertex",
+        path: "src/render_system/shaders/light_obj.vert",
+        types_meta: {
+            use bytemuck::{Pod, Zeroable};
+            #[derive(Clone, Copy, Zeroable, Pod)]
+        },
+    }
+}
+
+pub(super) mod light_obj_frag {
+    vulkano_shaders::shader! {
+        ty: "fragment",
+        path: "src/render_system/shaders/light_obj.frag"
+    }
+}
