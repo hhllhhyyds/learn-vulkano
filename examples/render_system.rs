@@ -14,13 +14,13 @@ fn main() {
 
     system.set_view(&(glam::Mat4::from_translation(glam::vec3(0., 0., -7.))));
 
-    let mut teapot = Model::new("models/teapot.obj").build();
+    let mut teapot = Model::builder("models/teapot.obj").build();
     teapot.translate(glam::vec3(-5.0, 2.0, -3.0));
 
-    let mut suzanne = Model::new("models/suzanne.obj").build();
+    let mut suzanne = Model::builder("models/suzanne.obj").build();
     suzanne.translate(glam::vec3(5.0, 2.0, -3.0));
 
-    let mut torus = Model::new("models/torus.obj").build();
+    let mut torus = Model::builder("models/torus.obj").build();
     torus.translate(glam::vec3(0.0, 0.0, -3.0));
 
     let mut directional_light_r = DirectionalLight {

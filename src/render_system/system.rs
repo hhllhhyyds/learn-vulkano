@@ -16,7 +16,7 @@ use vulkano::{
     },
     device::{Device, Queue},
     format::Format,
-    image::{view::ImageView, AttachmentImage, SwapchainImage},
+    image::{view::ImageView, AttachmentImage, ImageAccess, SwapchainImage},
     instance::Instance,
     memory::allocator::StandardMemoryAllocator,
     pipeline::{
@@ -30,7 +30,7 @@ use vulkano::{
         },
         GraphicsPipeline, Pipeline, PipelineBindPoint,
     },
-    render_pass::{Framebuffer, RenderPass, Subpass},
+    render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     swapchain::{AcquireError, Surface, Swapchain, SwapchainAcquireFuture, SwapchainPresentInfo},
     sync::{FlushError, GpuFuture},
 };
@@ -230,11 +230,8 @@ impl RenderSystem {
             .build(device.clone())
             .unwrap();
 
-        let (framebuffers, color_buffer, normal_buffer) = super::swapchain::create_framebuffer(
-            &swapchain_images,
-            render_pass.clone(),
-            &memory_allocator,
-        );
+        let (framebuffers, color_buffer, normal_buffer) =
+            create_framebuffer(&swapchain_images, render_pass.clone(), &memory_allocator);
 
         let dummy_verts = CpuAccessibleBuffer::from_iter(
             &memory_allocator,
@@ -580,7 +577,7 @@ impl RenderSystem {
             }
         }
 
-        let mut model = obj_loader::Model::new("models/sphere.obj")
+        let mut model = obj_loader::Model::builder("models/sphere.obj")
             .color(directional_light.color)
             .uniform_scale_factor(0.2)
             .build();
@@ -723,12 +720,11 @@ impl RenderSystem {
             self.surface.clone(),
             Some(self.swapchain.clone()),
         );
-        let (new_framebuffers, new_color_buffer, new_normal_buffer) =
-            super::swapchain::create_framebuffer(
-                &new_images,
-                self.render_pass.clone(),
-                &self.memory_allocator,
-            );
+        let (new_framebuffers, new_color_buffer, new_normal_buffer) = create_framebuffer(
+            &new_images,
+            self.render_pass.clone(),
+            &self.memory_allocator,
+        );
 
         self.swapchain = new_swapchain;
         self.framebuffers = new_framebuffers;
@@ -778,4 +774,65 @@ impl RenderSystem {
             .from_data(uniform_data)
             .unwrap()
     }
+}
+
+#[allow(clippy::type_complexity)]
+fn create_framebuffer(
+    images: &[Arc<SwapchainImage>],
+    render_pass: Arc<RenderPass>,
+    allocator: &StandardMemoryAllocator,
+) -> (
+    Vec<Arc<Framebuffer>>,
+    Arc<ImageView<AttachmentImage>>,
+    Arc<ImageView<AttachmentImage>>,
+) {
+    let mut framebuffers = vec![];
+    let dimensions = images[0].dimensions().width_height();
+
+    let depth_buffer = ImageView::new_default(
+        AttachmentImage::transient(allocator, dimensions, Format::D16_UNORM)
+            .expect("Failed to create depth image"),
+    )
+    .expect("Failed to create depth image view");
+
+    let color_buffer = ImageView::new_default(
+        AttachmentImage::transient_input_attachment(
+            allocator,
+            dimensions,
+            Format::A2B10G10R10_UNORM_PACK32,
+        )
+        .expect("Failed to create color input image"),
+    )
+    .expect("Failed to create color input image view");
+
+    let normal_buffer = ImageView::new_default(
+        AttachmentImage::transient_input_attachment(
+            allocator,
+            dimensions,
+            Format::R16G16B16A16_SFLOAT,
+        )
+        .expect("Failed to create normal input image"),
+    )
+    .expect("Failed to create normal input image view");
+
+    for image in images {
+        let view =
+            ImageView::new_default(image.clone()).expect("Failed to create swapchain image view");
+        framebuffers.push(
+            Framebuffer::new(
+                render_pass.clone(),
+                FramebufferCreateInfo {
+                    attachments: vec![
+                        view,
+                        color_buffer.clone(),
+                        normal_buffer.clone(),
+                        depth_buffer.clone(),
+                    ],
+                    ..Default::default()
+                },
+            )
+            .expect("Failed to create framebuffer"),
+        );
+    }
+    (framebuffers, color_buffer.clone(), normal_buffer.clone())
 }

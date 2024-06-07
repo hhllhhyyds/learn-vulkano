@@ -1,5 +1,3 @@
-#![allow(clippy::all)]
-
 use std::cell::Cell;
 use std::fmt;
 use std::fs::File;
@@ -23,11 +21,7 @@ impl RawVertex {
             content.push(0.0);
         }
         RawVertex {
-            vals: [
-                *content.get(0).unwrap(),
-                *content.get(1).unwrap(),
-                *content.get(2).unwrap(),
-            ],
+            vals: content.try_into().unwrap(),
         }
     }
 }
@@ -52,9 +46,9 @@ impl RawFace {
     }
 
     fn parse(inpt: Vec<&str>, index: usize, invert: bool) -> Option<[usize; 3]> {
-        let f1: Vec<&str> = inpt.get(0).unwrap().split("/").collect();
-        let f2: Vec<&str> = inpt.get(1).unwrap().split("/").collect();
-        let f3: Vec<&str> = inpt.get(2).unwrap().split("/").collect();
+        let f1: Vec<&str> = inpt.first().unwrap().split('/').collect();
+        let f2: Vec<&str> = inpt.get(1).unwrap().split('/').collect();
+        let f3: Vec<&str> = inpt.get(2).unwrap().split('/').collect();
         let a1 = f1.get(index).unwrap().to_string();
         let a2 = f2.get(index).unwrap().to_string();
         let a3 = f3.get(index).unwrap().to_string();
@@ -372,7 +366,7 @@ impl ModelBuilder {
 }
 
 impl Model {
-    pub fn new(file_name: &str) -> ModelBuilder {
+    pub fn builder(file_name: &str) -> ModelBuilder {
         ModelBuilder::new(file_name.into())
     }
 

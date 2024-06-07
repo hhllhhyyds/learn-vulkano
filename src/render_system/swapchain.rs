@@ -2,10 +2,7 @@ use std::sync::Arc;
 
 use vulkano::{
     device::Device,
-    format::Format,
-    image::{view::ImageView, AttachmentImage, ImageAccess, SwapchainImage},
-    memory::allocator::StandardMemoryAllocator,
-    render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass},
+    image::SwapchainImage,
     swapchain::{Surface, Swapchain, SwapchainCreateInfo},
 };
 
@@ -69,65 +66,4 @@ pub fn create_swapchain_and_images(
         )
         .expect("Failed to create swapchain")
     }
-}
-
-#[allow(clippy::type_complexity)]
-pub fn create_framebuffer(
-    images: &[Arc<SwapchainImage>],
-    render_pass: Arc<RenderPass>,
-    allocator: &StandardMemoryAllocator,
-) -> (
-    Vec<Arc<Framebuffer>>,
-    Arc<ImageView<AttachmentImage>>,
-    Arc<ImageView<AttachmentImage>>,
-) {
-    let mut framebuffers = vec![];
-    let dimensions = images[0].dimensions().width_height();
-
-    let depth_buffer = ImageView::new_default(
-        AttachmentImage::transient(allocator, dimensions, Format::D16_UNORM)
-            .expect("Failed to create depth image"),
-    )
-    .expect("Failed to create depth image view");
-
-    let color_buffer = ImageView::new_default(
-        AttachmentImage::transient_input_attachment(
-            allocator,
-            dimensions,
-            Format::A2B10G10R10_UNORM_PACK32,
-        )
-        .expect("Failed to create color input image"),
-    )
-    .expect("Failed to create color input image view");
-
-    let normal_buffer = ImageView::new_default(
-        AttachmentImage::transient_input_attachment(
-            allocator,
-            dimensions,
-            Format::R16G16B16A16_SFLOAT,
-        )
-        .expect("Failed to create normal input image"),
-    )
-    .expect("Failed to create normal input image view");
-
-    for image in images {
-        let view =
-            ImageView::new_default(image.clone()).expect("Failed to create swapchain image view");
-        framebuffers.push(
-            Framebuffer::new(
-                render_pass.clone(),
-                FramebufferCreateInfo {
-                    attachments: vec![
-                        view,
-                        color_buffer.clone(),
-                        normal_buffer.clone(),
-                        depth_buffer.clone(),
-                    ],
-                    ..Default::default()
-                },
-            )
-            .expect("Failed to create framebuffer"),
-        );
-    }
-    (framebuffers, color_buffer.clone(), normal_buffer.clone())
 }
