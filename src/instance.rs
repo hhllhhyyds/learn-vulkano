@@ -1,9 +1,11 @@
 use std::sync::Arc;
 
-use vulkano::instance::{Instance, InstanceCreateInfo, InstanceCreationError};
-use vulkano::{Version, VulkanLibrary};
+use vulkano::{
+    instance::{Instance, InstanceCreateInfo},
+    Version, VulkanLibrary,
+};
 
-pub fn instance_for_window_requirements() -> Result<Arc<Instance>, InstanceCreationError> {
+pub fn create_instance_for_window_app() -> Arc<Instance> {
     let library = VulkanLibrary::new().expect("Failed to load vulkan library");
     let extensions = vulkano_win::required_extensions(&library);
 
@@ -16,4 +18,5 @@ pub fn instance_for_window_requirements() -> Result<Arc<Instance>, InstanceCreat
             ..Default::default()
         },
     )
+    .expect("Failed to create instace suitable for window app")
 }

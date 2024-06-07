@@ -21,6 +21,10 @@ use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
 use vulkano::render_pass::Subpass;
 use vulkano::swapchain::{self, AcquireError, SwapchainPresentInfo};
 use vulkano::sync::{self, FlushError, GpuFuture};
+use vulkano::{
+    image::{view::ImageView, AttachmentImage, ImageAccess, SwapchainImage},
+    render_pass::{Framebuffer, FramebufferCreateInfo, FramebufferCreationError, RenderPass},
+};
 
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::ControlFlow;
@@ -304,24 +308,22 @@ mod model {
 }
 
 fn main() {
-    let instance = learn_vulkano::instance::instance_for_window_requirements().unwrap();
+    let instance = learn_vulkano::instance::create_instance_for_window_app();
 
     let (event_loop, surface) =
         learn_vulkano::window::window_eventloop_surface(instance.clone()).unwrap();
 
-    let daq = learn_vulkano::device::device_and_queue_for_window_requirements(
+    let (device, queue) = learn_vulkano::device::DeviceAndQueue::new_for_window_app(
         instance.clone(),
         surface.clone(),
     )
-    .unwrap();
-    let (device, queue) = (daq.logical, daq.queues[0].clone());
+    .get_device_and_first_queue();
 
     let (mut swapchain, images) = learn_vulkano::swapchain::create_swapchain_and_images(
         device.clone(),
         surface.clone(),
         None,
-    )
-    .unwrap();
+    );
 
     let render_pass = vulkano::single_pass_renderpass!(
         device.clone(),
@@ -385,12 +387,8 @@ fn main() {
         color: [1.0, 1.0, 1.0],
     };
 
-    let mut framebuffers = learn_vulkano::swapchain::create_framebuffer_with_depth(
-        &images,
-        render_pass.clone(),
-        &memory_allocator,
-    )
-    .unwrap();
+    let mut framebuffers =
+        create_framebuffer_with_depth(&images, render_pass.clone(), &memory_allocator).unwrap();
 
     let command_buffer_allocator =
         StandardCommandBufferAllocator::new(device.clone(), Default::default());
@@ -482,10 +480,9 @@ fn main() {
                         device.clone(),
                         surface.clone(),
                         Some(swapchain.clone()),
-                    )
-                    .unwrap();
+                    );
                 swapchain = new_swapchain;
-                framebuffers = learn_vulkano::swapchain::create_framebuffer_with_depth(
+                framebuffers = create_framebuffer_with_depth(
                     &new_images,
                     render_pass.clone(),
                     &memory_allocator,
@@ -579,4 +576,30 @@ fn main() {
         }
         _ => {}
     });
+}
+
+pub fn create_framebuffer_with_depth(
+    images: &[Arc<SwapchainImage>],
+    render_pass: Arc<RenderPass>,
+    allocator: &StandardMemoryAllocator,
+) -> Result<Vec<Arc<Framebuffer>>, FramebufferCreationError> {
+    let mut framebuffer = vec![];
+    let dimensions = images[0].dimensions().width_height();
+
+    let depth_buffer = ImageView::new_default(
+        AttachmentImage::transient(allocator, dimensions, Format::D16_UNORM).unwrap(),
+    )
+    .unwrap();
+
+    for image in images {
+        let view = ImageView::new_default(image.clone()).unwrap();
+        framebuffer.push(Framebuffer::new(
+            render_pass.clone(),
+            FramebufferCreateInfo {
+                attachments: vec![view, depth_buffer.clone()],
+                ..Default::default()
+            },
+        )?);
+    }
+    Ok(framebuffer)
 }

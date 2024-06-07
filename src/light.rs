@@ -13,3 +13,9 @@ pub struct DirectionalLight {
     pub position: [f32; 3],
     pub color: [f32; 3],
 }
+
+impl DirectionalLight {
+    pub fn get_position(&self) -> glam::Vec3 {
+        glam::vec3(self.position[0], self.position[1], self.position[2])
+    }
+}

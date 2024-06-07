@@ -2,52 +2,28 @@ use std::sync::Arc;
 
 use vulkano::{
     device::{
-        physical::{PhysicalDevice, PhysicalDeviceType},
-        Device, DeviceCreateInfo, DeviceCreationError, DeviceExtensions, Queue, QueueCreateInfo,
+        physical::PhysicalDeviceType, Device, DeviceCreateInfo, DeviceExtensions, Queue,
+        QueueCreateInfo,
     },
     instance::Instance,
     swapchain::Surface,
-    VulkanError,
 };
 
 pub struct DeviceAndQueue {
-    pub physical: Arc<PhysicalDevice>,
-    pub queue_family_index: u32,
-    pub logical: Arc<Device>,
-    pub queues: Vec<Arc<Queue>>,
+    logical: Arc<Device>,
+    queues: Vec<Arc<Queue>>,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum CreationError {
-    EnumPhysicalDeviceError(VulkanError),
-    FailedFindSuitableError,
-    LogicalDeviceCreationError(DeviceCreationError),
-}
+impl DeviceAndQueue {
+    pub fn new_for_window_app(instance: Arc<Instance>, surface: Arc<Surface>) -> Self {
+        let device_extensions = DeviceExtensions {
+            khr_swapchain: true, // required to create swapchain
+            ..DeviceExtensions::empty()
+        };
 
-impl From<VulkanError> for CreationError {
-    fn from(value: VulkanError) -> Self {
-        CreationError::EnumPhysicalDeviceError(value)
-    }
-}
-
-impl From<DeviceCreationError> for CreationError {
-    fn from(value: DeviceCreationError) -> Self {
-        CreationError::LogicalDeviceCreationError(value)
-    }
-}
-
-pub fn device_and_queue_for_window_requirements(
-    instance: Arc<Instance>,
-    surface: Arc<Surface>,
-) -> Result<DeviceAndQueue, CreationError> {
-    let device_extensions = DeviceExtensions {
-        khr_swapchain: true,
-        ..DeviceExtensions::empty()
-    };
-
-    let (physical_device, queue_family_index) = if let Some((physical_device, queue_family_index)) =
-        instance
-            .enumerate_physical_devices()?
+        let (physical_device, queue_family_index) = instance
+            .enumerate_physical_devices()
+            .expect("Failed to enumerate available physical device")
             .filter(|p| p.supported_extensions().contains(&device_extensions))
             .filter_map(|p| {
                 p.queue_family_properties()
@@ -70,29 +46,31 @@ pub fn device_and_queue_for_window_requirements(
                     PhysicalDeviceType::Other => 4,
                     _ => 5,
                 }
-            }) {
-        (physical_device, queue_family_index)
-    } else {
-        return Err(CreationError::FailedFindSuitableError);
-    };
+            })
+            .expect("Failed to find physical device suitable for window app");
 
-    let (device, queues) = Device::new(
-        physical_device.clone(),
-        DeviceCreateInfo {
-            enabled_extensions: device_extensions,
-            queue_create_infos: vec![QueueCreateInfo {
-                queue_family_index,
+        let (logical_device, queues) = Device::new(
+            physical_device.clone(),
+            DeviceCreateInfo {
+                enabled_extensions: device_extensions,
+                queue_create_infos: vec![QueueCreateInfo {
+                    queue_family_index,
+                    ..Default::default()
+                }],
                 ..Default::default()
-            }],
-            ..Default::default()
-        },
-    )?;
-    let queues = queues.collect::<Vec<Arc<Queue>>>();
+            },
+        )
+        .expect("Failed to create vulkan logical device");
+        let queues = queues.collect::<Vec<Arc<Queue>>>();
+        assert!(!queues.is_empty(), "Failed to get suitable queues");
 
-    Ok(DeviceAndQueue {
-        physical: physical_device,
-        queue_family_index,
-        logical: device,
-        queues,
-    })
+        Self {
+            logical: logical_device,
+            queues,
+        }
+    }
+
+    pub fn get_device_and_first_queue(&self) -> (Arc<Device>, Arc<Queue>) {
+        (self.logical.clone(), self.queues[0].clone())
+    }
 }

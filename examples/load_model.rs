@@ -26,6 +26,10 @@ use vulkano::pipeline::{GraphicsPipeline, Pipeline, PipelineBindPoint};
 use vulkano::render_pass::Subpass;
 use vulkano::swapchain::{self, AcquireError, SwapchainPresentInfo};
 use vulkano::sync::{self, FlushError, GpuFuture};
+use vulkano::{
+    image::{view::ImageView, AttachmentImage, ImageAccess, SwapchainImage},
+    render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass},
+};
 
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::ControlFlow;
@@ -79,24 +83,22 @@ mod ambient_frag {
 }
 
 fn main() {
-    let instance = learn_vulkano::instance::instance_for_window_requirements().unwrap();
+    let instance = learn_vulkano::instance::create_instance_for_window_app();
 
     let (event_loop, surface) =
         learn_vulkano::window::window_eventloop_surface(instance.clone()).unwrap();
 
-    let daq = learn_vulkano::device::device_and_queue_for_window_requirements(
+    let (device, queue) = learn_vulkano::device::DeviceAndQueue::new_for_window_app(
         instance.clone(),
         surface.clone(),
     )
-    .unwrap();
-    let (device, queue) = (daq.logical, daq.queues[0].clone());
+    .get_device_and_first_queue();
 
     let (mut swapchain, images) = learn_vulkano::swapchain::create_swapchain_and_images(
         device.clone(),
         surface.clone(),
         None,
-    )
-    .unwrap();
+    );
 
     let render_pass = vulkano::ordered_passes_renderpass!(device.clone(),
         attachments: {
@@ -204,7 +206,7 @@ fn main() {
 
     let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
 
-    let mut model = Model::new("models/suzanne.obj").build();
+    let mut model = Model::builder("models/suzanne.obj").build();
     model.translate(glam::vec3(0.0, 0.0, -3.0));
 
     let vertex_buffer = CpuAccessibleBuffer::from_iter(
@@ -254,11 +256,7 @@ fn main() {
     };
 
     let (mut framebuffers, mut color_buffer, mut normal_buffer) =
-        learn_vulkano::swapchain::create_framebuffer_and_other(
-            &images,
-            render_pass.clone(),
-            &memory_allocator,
-        );
+        create_framebuffer_and_other(&images, render_pass.clone(), &memory_allocator);
 
     let command_buffer_allocator =
         StandardCommandBufferAllocator::new(device.clone(), Default::default());
@@ -364,10 +362,9 @@ fn main() {
                         device.clone(),
                         surface.clone(),
                         Some(swapchain.clone()),
-                    )
-                    .unwrap();
+                    );
                 let (new_framebuffers, new_color_buffer, new_normal_buffer) =
-                    learn_vulkano::swapchain::create_framebuffer_and_other(
+                    create_framebuffer_and_other(
                         &new_images,
                         render_pass.clone(),
                         &memory_allocator,
@@ -546,4 +543,63 @@ fn generate_directional_buffer(
     };
 
     pool.from_data(uniform_data).unwrap()
+}
+
+#[allow(clippy::type_complexity)]
+pub fn create_framebuffer_and_other(
+    images: &[Arc<SwapchainImage>],
+    render_pass: Arc<RenderPass>,
+    allocator: &StandardMemoryAllocator,
+) -> (
+    Vec<Arc<Framebuffer>>,
+    Arc<ImageView<AttachmentImage>>,
+    Arc<ImageView<AttachmentImage>>,
+) {
+    let mut framebuffers = vec![];
+    let dimensions = images[0].dimensions().width_height();
+
+    let depth_buffer = ImageView::new_default(
+        AttachmentImage::transient(allocator, dimensions, Format::D16_UNORM).unwrap(),
+    )
+    .unwrap();
+
+    let color_buffer = ImageView::new_default(
+        AttachmentImage::transient_input_attachment(
+            allocator,
+            dimensions,
+            Format::A2B10G10R10_UNORM_PACK32,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+
+    let normal_buffer = ImageView::new_default(
+        AttachmentImage::transient_input_attachment(
+            allocator,
+            dimensions,
+            Format::R16G16B16A16_SFLOAT,
+        )
+        .unwrap(),
+    )
+    .unwrap();
+
+    for image in images {
+        let view = ImageView::new_default(image.clone()).unwrap();
+        framebuffers.push(
+            Framebuffer::new(
+                render_pass.clone(),
+                FramebufferCreateInfo {
+                    attachments: vec![
+                        view,
+                        color_buffer.clone(),
+                        normal_buffer.clone(),
+                        depth_buffer.clone(),
+                    ],
+                    ..Default::default()
+                },
+            )
+            .unwrap(),
+        );
+    }
+    (framebuffers, color_buffer.clone(), normal_buffer.clone())
 }

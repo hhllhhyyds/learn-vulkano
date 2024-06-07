@@ -39,7 +39,8 @@ use vulkano_win::VkSurfaceBuild;
 
 use winit::{event_loop::EventLoop, window::WindowBuilder};
 
-use super::{light, obj_loader, shaders, view_projection};
+use super::shaders;
+use crate::{light, obj_loader};
 
 #[derive(Debug, Clone)]
 enum RenderStage {
@@ -77,7 +78,7 @@ pub struct RenderSystem {
     normal_buffer: Arc<ImageView<AttachmentImage>>,
     dummy_verts: Arc<CpuAccessibleBuffer<[obj_loader::DummyVertex]>>,
     ambient_buffer: Arc<CpuAccessibleBuffer<shaders::ambient_frag::ty::AmbientLightData>>,
-    vp: view_projection::VP,
+    vp: crate::mvp::VP,
     vp_buffer: Arc<CpuAccessibleBuffer<shaders::deferred_vert::ty::VpData>>,
     vp_set: Arc<PersistentDescriptorSet>,
     render_stage: RenderStage,
@@ -88,15 +89,15 @@ pub struct RenderSystem {
 
 impl RenderSystem {
     pub fn new(event_loop: &EventLoop<()>) -> Self {
-        let instance = super::instance::create_instance_for_window_app();
+        let instance = crate::instance::create_instance_for_window_app();
         let surface = WindowBuilder::new()
             .build_vk_surface(event_loop, instance.clone())
             .expect("Failed to build vulkan surface");
         let (device, queue) =
-            super::device::DeviceAndQueue::new_for_window_app(instance.clone(), surface.clone())
+            crate::device::DeviceAndQueue::new_for_window_app(instance.clone(), surface.clone())
                 .get_device_and_first_queue();
         let (swapchain, swapchain_images) =
-            super::swapchain::create_swapchain_and_images(device.clone(), surface.clone(), None);
+            crate::swapchain::create_swapchain_and_images(device.clone(), surface.clone(), None);
         let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
         let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
         let command_buffer_allocator =
@@ -258,8 +259,8 @@ impl RenderSystem {
         )
         .unwrap();
 
-        let vp = view_projection::VP::from_surface(&surface);
-        let vp_buffer = vp.create_uniform_buffer(memory_allocator.clone());
+        let vp = crate::mvp::VP::from_surface(&surface);
+        let vp_buffer = create_uniform_buffer(&vp, memory_allocator.clone());
         let vp_layout = deferred_pipeline.layout().set_layouts().get(0).unwrap();
         let vp_set = PersistentDescriptorSet::new(
             &descriptor_set_allocator,
@@ -302,7 +303,7 @@ impl RenderSystem {
 
     pub fn set_view(&mut self, view: &glam::Mat4) {
         self.vp.view = *view;
-        self.vp_buffer = self.vp.create_uniform_buffer(self.memory_allocator.clone());
+        self.vp_buffer = create_uniform_buffer(&self.vp, self.memory_allocator.clone());
 
         let vp_layout = self
             .deferred_pipeline
@@ -713,9 +714,9 @@ impl RenderSystem {
     }
 
     pub fn recreate_swapchain(&mut self) {
-        self.vp.projection = view_projection::VP::from_surface(&self.surface).projection;
+        self.vp.projection = crate::mvp::VP::from_surface(&self.surface).projection;
 
-        let (new_swapchain, new_images) = super::swapchain::create_swapchain_and_images(
+        let (new_swapchain, new_images) = crate::swapchain::create_swapchain_and_images(
             self.device.clone(),
             self.surface.clone(),
             Some(self.swapchain.clone()),
@@ -731,7 +732,7 @@ impl RenderSystem {
         self.color_buffer = new_color_buffer;
         self.normal_buffer = new_normal_buffer;
 
-        self.vp_buffer = self.vp.create_uniform_buffer(self.memory_allocator.clone());
+        self.vp_buffer = create_uniform_buffer(&self.vp, self.memory_allocator.clone());
 
         let vp_layout = self
             .deferred_pipeline
@@ -754,7 +755,7 @@ impl RenderSystem {
     fn view_port_from_surface(&self) -> Viewport {
         Viewport {
             origin: [0.0, 0.0],
-            dimensions: super::swapchain::surface_extent(&self.surface).into(),
+            dimensions: crate::swapchain::surface_extent(&self.surface).into(),
             depth_range: 0.0..1.0,
         }
     }
@@ -835,4 +836,23 @@ fn create_framebuffer(
         );
     }
     (framebuffers, color_buffer.clone(), normal_buffer.clone())
+}
+
+pub fn create_uniform_buffer(
+    vp: &crate::mvp::VP,
+    memory_allocator: Arc<StandardMemoryAllocator>,
+) -> Arc<CpuAccessibleBuffer<super::shaders::deferred_vert::ty::VpData>> {
+    CpuAccessibleBuffer::from_data(
+        &memory_allocator,
+        BufferUsage {
+            uniform_buffer: true,
+            ..BufferUsage::empty()
+        },
+        false,
+        super::shaders::deferred_vert::ty::VpData {
+            view: vp.view.to_cols_array_2d(),
+            projection: vp.projection.to_cols_array_2d(),
+        },
+    )
+    .expect("Failed to create VP buffer")
 }

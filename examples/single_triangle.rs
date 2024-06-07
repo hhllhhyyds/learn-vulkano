@@ -13,6 +13,10 @@ use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::Subpass;
 use vulkano::swapchain::{self, AcquireError, SwapchainPresentInfo};
 use vulkano::sync::{self, FlushError, GpuFuture};
+use vulkano::{
+    image::{view::ImageView, SwapchainImage},
+    render_pass::{Framebuffer, FramebufferCreateInfo, FramebufferCreationError, RenderPass},
+};
 
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::ControlFlow;
@@ -55,24 +59,22 @@ mod fs {
 }
 
 fn main() {
-    let instance = learn_vulkano::instance::instance_for_window_requirements().unwrap();
+    let instance = learn_vulkano::instance::create_instance_for_window_app();
 
     let (event_loop, surface) =
         learn_vulkano::window::window_eventloop_surface(instance.clone()).unwrap();
 
-    let daq = learn_vulkano::device::device_and_queue_for_window_requirements(
+    let (device, queue) = learn_vulkano::device::DeviceAndQueue::new_for_window_app(
         instance.clone(),
         surface.clone(),
     )
-    .unwrap();
-    let (device, queue) = (daq.logical, daq.queues[0].clone());
+    .get_device_and_first_queue();
 
     let (mut swapchain, images) = learn_vulkano::swapchain::create_swapchain_and_images(
         device.clone(),
         surface.clone(),
         None,
-    )
-    .unwrap();
+    );
 
     // render pass descript shape of used data used in this pass
     let render_pass = vulkano::single_pass_renderpass!(
@@ -132,8 +134,7 @@ fn main() {
     )
     .unwrap();
 
-    let mut framebuffers =
-        learn_vulkano::swapchain::create_framebuffer(&images, render_pass.clone()).unwrap();
+    let mut framebuffers = create_framebuffer(&images, render_pass.clone()).unwrap();
 
     // command buffer
     let command_buffer_allocator =
@@ -168,12 +169,9 @@ fn main() {
                         device.clone(),
                         surface.clone(),
                         Some(swapchain.clone()),
-                    )
-                    .unwrap();
+                    );
                 swapchain = new_swapchain;
-                framebuffers =
-                    learn_vulkano::swapchain::create_framebuffer(&new_images, render_pass.clone())
-                        .unwrap();
+                framebuffers = create_framebuffer(&new_images, render_pass.clone()).unwrap();
                 recreate_swapchain = false;
             }
 
@@ -262,4 +260,22 @@ fn main() {
         }
         _ => {}
     });
+}
+
+fn create_framebuffer(
+    images: &[Arc<SwapchainImage>],
+    render_pass: Arc<RenderPass>,
+) -> Result<Vec<Arc<Framebuffer>>, FramebufferCreationError> {
+    let mut framebuffer = vec![];
+    for image in images {
+        let view = ImageView::new_default(image.clone()).unwrap();
+        framebuffer.push(Framebuffer::new(
+            render_pass.clone(),
+            FramebufferCreateInfo {
+                attachments: vec![view],
+                ..Default::default()
+            },
+        )?);
+    }
+    Ok(framebuffer)
 }

@@ -1,5 +1,3 @@
-#![allow(clippy::all)]
-
 use std::cell::Cell;
 use std::fmt;
 use std::fs::File;
@@ -23,11 +21,7 @@ impl RawVertex {
             content.push(0.0);
         }
         RawVertex {
-            vals: [
-                *content.get(0).unwrap(),
-                *content.get(1).unwrap(),
-                *content.get(2).unwrap(),
-            ],
+            vals: content.try_into().unwrap(),
         }
     }
 }
@@ -52,9 +46,9 @@ impl RawFace {
     }
 
     fn parse(inpt: Vec<&str>, index: usize, invert: bool) -> Option<[usize; 3]> {
-        let f1: Vec<&str> = inpt.get(0).unwrap().split("/").collect();
-        let f2: Vec<&str> = inpt.get(1).unwrap().split("/").collect();
-        let f3: Vec<&str> = inpt.get(2).unwrap().split("/").collect();
+        let f1: Vec<&str> = inpt.first().unwrap().split('/').collect();
+        let f2: Vec<&str> = inpt.get(1).unwrap().split('/').collect();
+        let f3: Vec<&str> = inpt.get(2).unwrap().split('/').collect();
         let a1 = f1.get(index).unwrap().to_string();
         let a2 = f2.get(index).unwrap().to_string();
         let a3 = f3.get(index).unwrap().to_string();
@@ -236,6 +230,7 @@ pub struct ColoredVertex {
     pub position: [f32; 3],
     pub color: [f32; 3],
 }
+vulkano::impl_vertex!(ColoredVertex, position, color);
 
 /// A structure used for the vertex information starting
 /// from our lesson on lighting
@@ -301,6 +296,7 @@ pub struct Model {
     data: Vec<NormalVertex>,
     translation: Mat4,
     rotation: Mat4,
+    uniform_scale: f32,
 
     // We might call multiple translation/rotation calls
     // in between asking for the model matrix. This lets us
@@ -324,6 +320,7 @@ pub struct ModelBuilder {
     file_name: String,
     custom_color: [f32; 3],
     invert: bool,
+    scale_factor: f32,
 }
 
 impl ModelBuilder {
@@ -332,6 +329,7 @@ impl ModelBuilder {
             file_name: file,
             custom_color: [1.0, 0.35, 0.137],
             invert: true,
+            scale_factor: 1.0,
         }
     }
 
@@ -341,6 +339,7 @@ impl ModelBuilder {
             data: loader.as_normal_vertices(),
             translation: Mat4::IDENTITY,
             rotation: Mat4::IDENTITY,
+            uniform_scale: self.scale_factor,
             cache: Cell::new(None),
         }
     }
@@ -359,15 +358,31 @@ impl ModelBuilder {
         self.invert = invert;
         self
     }
+
+    pub fn uniform_scale_factor(mut self, scale: f32) -> ModelBuilder {
+        self.scale_factor = scale;
+        self
+    }
 }
 
 impl Model {
-    pub fn new(file_name: &str) -> ModelBuilder {
+    pub fn builder(file_name: &str) -> ModelBuilder {
         ModelBuilder::new(file_name.into())
     }
 
     pub fn data(&self) -> Vec<NormalVertex> {
         self.data.clone()
+    }
+
+    pub fn color_data(&self) -> Vec<ColoredVertex> {
+        let mut ret: Vec<ColoredVertex> = Vec::new();
+        for v in &self.data {
+            ret.push(ColoredVertex {
+                position: v.position,
+                color: v.color,
+            });
+        }
+        ret
     }
 
     pub fn model_matrix(&self) -> Mat4 {
@@ -377,6 +392,7 @@ impl Model {
 
         // recalculate matrix
         let model = self.translation * self.rotation;
+        let model = model * Mat4::from_scale([self.uniform_scale; 3].into());
         let normal = model.inverse().transpose();
 
         self.cache
@@ -392,6 +408,7 @@ impl Model {
 
         // recalculate matrix
         let model = self.translation * self.rotation;
+        let model = model * Mat4::from_scale([self.uniform_scale; 3].into());
         let normal = model.inverse().transpose();
 
         self.cache

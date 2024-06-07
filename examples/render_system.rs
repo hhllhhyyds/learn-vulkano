@@ -1,6 +1,6 @@
 use std::{f64::consts::PI, time::Instant};
 
-use learn_vulkano::render_system::{light::DirectionalLight, obj_loader::Model, RenderSystem};
+use learn_vulkano::{light::DirectionalLight, obj_loader::Model, render_system::RenderSystem};
 
 use vulkano::sync::GpuFuture;
 use winit::{
