@@ -89,15 +89,15 @@ pub struct RenderSystem {
 
 impl RenderSystem {
     pub fn new(event_loop: &EventLoop<()>) -> Self {
-        let instance = crate::instance::create_instance_for_window_app();
+        let instance = crate::setup::create_instance_for_window_app();
         let surface = WindowBuilder::new()
             .build_vk_surface(event_loop, instance.clone())
             .expect("Failed to build vulkan surface");
         let (device, queue) =
-            crate::device::DeviceAndQueue::new_for_window_app(instance.clone(), surface.clone())
+            crate::setup::DeviceAndQueue::new_for_window_app(instance.clone(), surface.clone())
                 .get_device_and_first_queue();
         let (swapchain, swapchain_images) =
-            crate::swapchain::create_swapchain_and_images(device.clone(), surface.clone(), None);
+            crate::setup::create_swapchain_and_images(device.clone(), surface.clone(), None);
         let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
         let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
         let command_buffer_allocator =
@@ -716,7 +716,7 @@ impl RenderSystem {
     pub fn recreate_swapchain(&mut self) {
         self.vp.projection = crate::mvp::VP::from_surface(&self.surface).projection;
 
-        let (new_swapchain, new_images) = crate::swapchain::create_swapchain_and_images(
+        let (new_swapchain, new_images) = crate::setup::create_swapchain_and_images(
             self.device.clone(),
             self.surface.clone(),
             Some(self.swapchain.clone()),
@@ -755,7 +755,7 @@ impl RenderSystem {
     fn view_port_from_surface(&self) -> Viewport {
         Viewport {
             origin: [0.0, 0.0],
-            dimensions: crate::swapchain::surface_extent(&self.surface).into(),
+            dimensions: crate::setup::surface_extent(&self.surface).into(),
             depth_range: 0.0..1.0,
         }
     }

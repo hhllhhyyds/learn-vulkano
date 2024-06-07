@@ -24,6 +24,10 @@ use winit::window::Window;
 
 use learn_vulkano::vertex::VertexA;
 
+use vulkano_win::VkSurfaceBuild;
+use winit::event_loop::EventLoop;
+use winit::window::WindowBuilder;
+
 mod vs {
     vulkano_shaders::shader! {
         ty: "vertex",
@@ -59,22 +63,19 @@ mod fs {
 }
 
 fn main() {
-    let instance = learn_vulkano::instance::create_instance_for_window_app();
+    let instance = learn_vulkano::setup::create_instance_for_window_app();
 
-    let (event_loop, surface) =
-        learn_vulkano::window::window_eventloop_surface(instance.clone()).unwrap();
+    let event_loop = EventLoop::new();
+    let surface = WindowBuilder::new()
+        .build_vk_surface(&event_loop, instance.clone())
+        .unwrap();
 
-    let (device, queue) = learn_vulkano::device::DeviceAndQueue::new_for_window_app(
-        instance.clone(),
-        surface.clone(),
-    )
-    .get_device_and_first_queue();
+    let (device, queue) =
+        learn_vulkano::setup::DeviceAndQueue::new_for_window_app(instance.clone(), surface.clone())
+            .get_device_and_first_queue();
 
-    let (mut swapchain, images) = learn_vulkano::swapchain::create_swapchain_and_images(
-        device.clone(),
-        surface.clone(),
-        None,
-    );
+    let (mut swapchain, images) =
+        learn_vulkano::setup::create_swapchain_and_images(device.clone(), surface.clone(), None);
 
     // render pass descript shape of used data used in this pass
     let render_pass = vulkano::single_pass_renderpass!(
@@ -164,12 +165,11 @@ fn main() {
                 .cleanup_finished();
 
             if recreate_swapchain {
-                let (new_swapchain, new_images) =
-                    learn_vulkano::swapchain::create_swapchain_and_images(
-                        device.clone(),
-                        surface.clone(),
-                        Some(swapchain.clone()),
-                    );
+                let (new_swapchain, new_images) = learn_vulkano::setup::create_swapchain_and_images(
+                    device.clone(),
+                    surface.clone(),
+                    Some(swapchain.clone()),
+                );
                 swapchain = new_swapchain;
                 framebuffers = create_framebuffer(&new_images, render_pass.clone()).unwrap();
                 recreate_swapchain = false;

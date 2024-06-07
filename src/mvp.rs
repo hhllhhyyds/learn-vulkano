@@ -44,7 +44,7 @@ impl VP {
     }
 
     pub fn from_surface(surface: &Surface) -> Self {
-        let image_extent: [u32; 2] = crate::swapchain::surface_extent(surface).into();
+        let image_extent: [u32; 2] = crate::setup::surface_extent(surface).into();
         let aspect_ratio = image_extent[0] as f32 / image_extent[1] as f32;
         let projection = Mat4::perspective_rh_gl(FRAC_PI_2, aspect_ratio, 0.01, 100.0);
         Self {

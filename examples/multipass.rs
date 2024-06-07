@@ -31,6 +31,10 @@ use winit::event_loop::ControlFlow;
 
 use learn_vulkano::vertex::VertexB;
 
+use vulkano_win::VkSurfaceBuild;
+use winit::event_loop::EventLoop;
+use winit::window::WindowBuilder;
+
 mod deferred_vert {
     vulkano_shaders::shader! {
         ty: "vertex",
@@ -63,22 +67,19 @@ mod lighting_frag {
 }
 
 fn main() {
-    let instance = learn_vulkano::instance::create_instance_for_window_app();
+    let instance = learn_vulkano::setup::create_instance_for_window_app();
 
-    let (event_loop, surface) =
-        learn_vulkano::window::window_eventloop_surface(instance.clone()).unwrap();
+    let event_loop = EventLoop::new();
+    let surface = WindowBuilder::new()
+        .build_vk_surface(&event_loop, instance.clone())
+        .unwrap();
 
-    let (device, queue) = learn_vulkano::device::DeviceAndQueue::new_for_window_app(
-        instance.clone(),
-        surface.clone(),
-    )
-    .get_device_and_first_queue();
+    let (device, queue) =
+        learn_vulkano::setup::DeviceAndQueue::new_for_window_app(instance.clone(), surface.clone())
+            .get_device_and_first_queue();
 
-    let (mut swapchain, images) = learn_vulkano::swapchain::create_swapchain_and_images(
-        device.clone(),
-        surface.clone(),
-        None,
-    );
+    let (mut swapchain, images) =
+        learn_vulkano::setup::create_swapchain_and_images(device.clone(), surface.clone(), None);
 
     let render_pass = vulkano::ordered_passes_renderpass!(device.clone(),
         attachments: {
@@ -213,8 +214,7 @@ fn main() {
                     + rotation_start.elapsed().subsec_nanos() as f64 / 1_000_000_000.0;
                 let elapsed_as_radians = elapsed * PI as f64 / 180.0;
 
-                let image_extent: [u32; 2] =
-                    learn_vulkano::swapchain::surface_extent(&surface).into();
+                let image_extent: [u32; 2] = learn_vulkano::setup::surface_extent(&surface).into();
 
                 let aspect_ratio = image_extent[0] as f32 / image_extent[1] as f32;
                 mvp.projection =
@@ -279,12 +279,11 @@ fn main() {
             .unwrap();
 
             if recreate_swapchain {
-                let (new_swapchain, new_images) =
-                    learn_vulkano::swapchain::create_swapchain_and_images(
-                        device.clone(),
-                        surface.clone(),
-                        Some(swapchain.clone()),
-                    );
+                let (new_swapchain, new_images) = learn_vulkano::setup::create_swapchain_and_images(
+                    device.clone(),
+                    surface.clone(),
+                    Some(swapchain.clone()),
+                );
                 let (new_framebuffers, new_color_buffer, new_normal_buffer) =
                     create_framebuffer_and_other(
                         &new_images,
@@ -343,7 +342,7 @@ fn main() {
                     0,
                     [Viewport {
                         origin: [0.0, 0.0],
-                        dimensions: learn_vulkano::swapchain::surface_extent(&surface).into(),
+                        dimensions: learn_vulkano::setup::surface_extent(&surface).into(),
                         depth_range: 0.0..1.0,
                     }],
                 )
