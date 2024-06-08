@@ -6,3 +6,6 @@ pub use instance::*;
 
 mod swapchain;
 pub use swapchain::*;
+
+mod render_base;
+pub use render_base::*;
