@@ -12,7 +12,7 @@ use vulkano::{
     sync::{self, FlushError, GpuFuture},
 };
 use vulkano_win::VkSurfaceBuild;
-use winit::{event_loop::EventLoop, window::WindowBuilder};
+use winit::{dpi::PhysicalSize, event_loop::EventLoop, window::WindowBuilder};
 
 pub struct RenderBase {
     instance: Arc<Instance>,
@@ -60,6 +60,10 @@ impl RenderBase {
 
     pub fn surface(&self) -> Arc<Surface> {
         self.surface.clone()
+    }
+
+    pub fn surface_extent(&self) -> PhysicalSize<u32> {
+        super::surface_extent(&self.surface)
     }
 
     pub fn device(&self) -> Arc<Device> {
