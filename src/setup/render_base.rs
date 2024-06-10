@@ -8,6 +8,7 @@ use vulkano::{
     device::{Device, Queue},
     image::SwapchainImage,
     instance::Instance,
+    pipeline::graphics::viewport::Viewport,
     swapchain::{AcquireError, Surface, Swapchain, SwapchainAcquireFuture, SwapchainPresentInfo},
     sync::{self, FlushError, GpuFuture},
 };
@@ -64,6 +65,14 @@ impl RenderBase {
 
     pub fn surface_extent(&self) -> PhysicalSize<u32> {
         super::surface_extent(&self.surface)
+    }
+
+    pub fn full_viewport(&self) -> Viewport {
+        Viewport {
+            origin: [0.0, 0.0],
+            dimensions: self.surface_extent().into(),
+            depth_range: 0.0..1.0,
+        }
     }
 
     pub fn device(&self) -> Arc<Device> {

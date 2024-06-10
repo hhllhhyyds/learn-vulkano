@@ -5,7 +5,7 @@ use vulkano::command_buffer::{CommandBufferUsage, RenderPassBeginInfo, SubpassCo
 use vulkano::memory::allocator::StandardMemoryAllocator;
 use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
 use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
-use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
+use vulkano::pipeline::graphics::viewport::ViewportState;
 use vulkano::pipeline::GraphicsPipeline;
 use vulkano::render_pass::Subpass;
 use vulkano::{
@@ -161,14 +161,7 @@ fn main() {
                         SubpassContents::Inline,
                     )
                     .unwrap()
-                    .set_viewport(
-                        0,
-                        [Viewport {
-                            origin: [0.0, 0.0],
-                            dimensions: render_base.surface_extent().into(),
-                            depth_range: 0.0..1.0,
-                        }],
-                    )
+                    .set_viewport(0, [render_base.full_viewport()])
                     .bind_pipeline_graphics(pipeline.clone())
                     .bind_vertex_buffers(0, vertex_buffer.clone())
                     .draw(vertex_buffer.len() as u32, 1, 0, 0)
