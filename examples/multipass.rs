@@ -29,7 +29,8 @@ use vulkano::{
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::ControlFlow;
 
-use learn_vulkano::vertex::VertexB;
+mod vertex;
+use vertex::VertexB;
 
 use vulkano_win::VkSurfaceBuild;
 use winit::event_loop::EventLoop;
@@ -162,7 +163,7 @@ fn main() {
             ..BufferUsage::empty()
         },
         false,
-        learn_vulkano::vertex::CUBE_B,
+        vertex::CUBE_B,
     )
     .unwrap();
 

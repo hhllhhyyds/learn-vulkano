@@ -17,6 +17,7 @@ pub struct VertexB {
 }
 vulkano::impl_vertex!(VertexB, position, normal, color);
 
+#[allow(dead_code)]
 pub const CUBE_B: [VertexB; 36] = [
     // front face
     VertexB {
@@ -205,3 +206,6 @@ pub const CUBE_B: [VertexB; 36] = [
         color: [1.0, 0.35, 0.137],
     },
 ];
+
+#[allow(dead_code)]
+fn main() {}

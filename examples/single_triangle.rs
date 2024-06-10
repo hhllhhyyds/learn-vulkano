@@ -17,7 +17,9 @@ use winit::event::{Event, WindowEvent};
 use winit::event_loop::ControlFlow;
 
 use learn_vulkano::setup::RenderBase;
-use learn_vulkano::vertex::VertexA;
+
+mod vertex;
+use vertex::VertexA;
 
 mod vs {
     vulkano_shaders::shader! {
