@@ -3,6 +3,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use glam::Vec3Swizzles;
+use learn_vulkano::setup::RenderBase;
 use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, CpuBufferPool, TypedBufferAccess};
 use vulkano::command_buffer::allocator::StandardCommandBufferAllocator;
 use vulkano::command_buffer::{
@@ -68,26 +69,14 @@ mod lighting_frag {
 }
 
 fn main() {
-    let instance = learn_vulkano::setup::create_instance_for_window_app();
+    let mut render_base = RenderBase::new();
 
-    let event_loop = EventLoop::new();
-    let surface = WindowBuilder::new()
-        .build_vk_surface(&event_loop, instance.clone())
-        .unwrap();
-
-    let (device, queue) =
-        learn_vulkano::setup::DeviceAndQueue::new_for_window_app(instance.clone(), surface.clone())
-            .get_device_and_first_queue();
-
-    let (mut swapchain, images) =
-        learn_vulkano::setup::create_swapchain_and_images(device.clone(), surface.clone(), None);
-
-    let render_pass = vulkano::ordered_passes_renderpass!(device.clone(),
+    let render_pass = vulkano::ordered_passes_renderpass!(render_base.device(),
         attachments: {
             final_color: {
                 load: Clear,
                 store: Store,
-                format: swapchain.image_format(),
+                format: render_base.swapchain().image_format(),
                 samples: 1,
             },
             color: {
@@ -126,10 +115,10 @@ fn main() {
     let deferred_pass = Subpass::from(render_pass.clone(), 0).unwrap();
     let lighting_pass = Subpass::from(render_pass.clone(), 1).unwrap();
 
-    let deferred_vert = deferred_vert::load(device.clone()).unwrap();
-    let deferred_frag = deferred_frag::load(device.clone()).unwrap();
-    let lighting_vert = lighting_vert::load(device.clone()).unwrap();
-    let lighting_frag = lighting_frag::load(device.clone()).unwrap();
+    let deferred_vert = deferred_vert::load(render_base.device()).unwrap();
+    let deferred_frag = deferred_frag::load(render_base.device()).unwrap();
+    let lighting_vert = lighting_vert::load(render_base.device()).unwrap();
+    let lighting_frag = lighting_frag::load(render_base.device()).unwrap();
 
     let deferred_pipeline = GraphicsPipeline::start()
         .vertex_input_state(BuffersDefinition::new().vertex::<VertexB>())
@@ -140,7 +129,7 @@ fn main() {
         .depth_stencil_state(DepthStencilState::simple_depth_test())
         .rasterization_state(RasterizationState::new().cull_mode(CullMode::Back))
         .render_pass(deferred_pass)
-        .build(device.clone())
+        .build(render_base.device())
         .unwrap();
 
     let lighting_pipeline = GraphicsPipeline::start()
@@ -151,10 +140,10 @@ fn main() {
         .fragment_shader(lighting_frag.entry_point("main").unwrap(), ())
         .rasterization_state(RasterizationState::new().cull_mode(CullMode::Back))
         .render_pass(lighting_pass)
-        .build(device.clone())
+        .build(render_base.device())
         .unwrap();
 
-    let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+    let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(render_base.device()));
 
     let vertex_buffer = CpuAccessibleBuffer::from_iter(
         &memory_allocator,
@@ -181,11 +170,12 @@ fn main() {
         create_framebuffer_and_other(&images, render_pass.clone(), &memory_allocator);
 
     let command_buffer_allocator =
-        StandardCommandBufferAllocator::new(device.clone(), Default::default());
-    let descriptor_set_allocator = StandardDescriptorSetAllocator::new(device.clone());
+        StandardCommandBufferAllocator::new(render_base.device(), Default::default());
+    let descriptor_set_allocator = StandardDescriptorSetAllocator::new(render_base.device());
 
     let mut recreate_swapchain = false;
-    let mut previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<dyn GpuFuture>);
+    let mut previous_frame_end =
+        Some(Box::new(sync::now(render_base.device())) as Box<dyn GpuFuture>);
 
     let rotation_start = Instant::now();
     event_loop.run(move |event, _, control_flow| match event {
@@ -281,7 +271,7 @@ fn main() {
 
             if recreate_swapchain {
                 let (new_swapchain, new_images) = learn_vulkano::setup::create_swapchain_and_images(
-                    device.clone(),
+                    render_base.device(),
                     surface.clone(),
                     Some(swapchain.clone()),
                 );
@@ -391,11 +381,11 @@ fn main() {
                 }
                 Err(FlushError::OutOfDate) => {
                     recreate_swapchain = true;
-                    previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<_>);
+                    previous_frame_end = Some(Box::new(sync::now(render_base.device())) as Box<_>);
                 }
                 Err(e) => {
                     println!("Failed to flush future: {:?}", e);
-                    previous_frame_end = Some(Box::new(sync::now(device.clone())) as Box<_>);
+                    previous_frame_end = Some(Box::new(sync::now(render_base.device())) as Box<_>);
                 }
             }
         }
