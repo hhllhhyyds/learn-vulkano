@@ -16,7 +16,10 @@ use vulkano::{
         Device, DeviceCreateInfo, DeviceExtensions, Features, Queue, QueueCreateInfo, QueueFlags,
     },
     instance::{
-        debug::{DebugUtilsMessenger, DebugUtilsMessengerCreateInfo},
+        debug::{
+            DebugUtilsMessageSeverity, DebugUtilsMessageType, DebugUtilsMessenger,
+            DebugUtilsMessengerCallback, DebugUtilsMessengerCreateInfo,
+        },
         Instance, InstanceCreateInfo, InstanceExtensions,
     },
     memory::allocator::StandardMemoryAllocator,
@@ -61,6 +64,7 @@ impl Default for VulkanoConfig {
                 flags: InstanceCreateFlags::ENUMERATE_PORTABILITY,
                 application_version: Version::V1_3,
                 enabled_extensions: InstanceExtensions {
+                    ext_debug_utils: true,
                     #[cfg(target_os = "macos")]
                     khr_portability_enumeration: true,
                     ..InstanceExtensions::empty()
@@ -68,7 +72,56 @@ impl Default for VulkanoConfig {
 
                 ..Default::default()
             },
-            debug_create_info: None,
+            debug_create_info: Some(DebugUtilsMessengerCreateInfo {
+                message_severity: DebugUtilsMessageSeverity::ERROR
+                    | DebugUtilsMessageSeverity::WARNING
+                    | DebugUtilsMessageSeverity::INFO
+                    | DebugUtilsMessageSeverity::VERBOSE,
+                message_type: DebugUtilsMessageType::GENERAL
+                    | DebugUtilsMessageType::VALIDATION
+                    | DebugUtilsMessageType::PERFORMANCE,
+                ..DebugUtilsMessengerCreateInfo::user_callback(unsafe {
+                    DebugUtilsMessengerCallback::new(
+                        |message_severity, message_type, callback_data| {
+                            let severity = if message_severity
+                                .intersects(DebugUtilsMessageSeverity::ERROR)
+                            {
+                                "error"
+                            } else if message_severity
+                                .intersects(DebugUtilsMessageSeverity::WARNING)
+                            {
+                                "warning"
+                            } else if message_severity.intersects(DebugUtilsMessageSeverity::INFO) {
+                                "information"
+                            } else if message_severity
+                                .intersects(DebugUtilsMessageSeverity::VERBOSE)
+                            {
+                                "verbose"
+                            } else {
+                                panic!("no-impl");
+                            };
+
+                            let ty = if message_type.intersects(DebugUtilsMessageType::GENERAL) {
+                                "general"
+                            } else if message_type.intersects(DebugUtilsMessageType::VALIDATION) {
+                                "validation"
+                            } else if message_type.intersects(DebugUtilsMessageType::PERFORMANCE) {
+                                "performance"
+                            } else {
+                                panic!("no-impl");
+                            };
+
+                            println!(
+                                "{} {} {}: {}",
+                                callback_data.message_id_name.unwrap_or("unknown"),
+                                ty,
+                                severity,
+                                callback_data.message
+                            );
+                        },
+                    )
+                })
+            }),
             device_filter_fn: Arc::new(move |p| {
                 p.supported_extensions().contains(&device_extensions)
             }),
